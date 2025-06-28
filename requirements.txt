@@ -1,5 +1,5 @@
 nuplan-devkit @ git+https://github.com/motional/nuplan-devkit/@nuplan-devkit-v1.2
-scikit-learn==1.2.2
+scikit-learn==1.5.0
 positional-encodings==6.0.1
 
 # nuplan requirements
