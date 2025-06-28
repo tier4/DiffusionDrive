@@ -43,7 +43,7 @@ torch==2.0.1
 torchvision==0.15.2
 pytorch-lightning==2.2.1
 tensorboard==2.16.2
-protobuf==4.25.3
+protobuf==4.25.8
 
 notebook
 timm
