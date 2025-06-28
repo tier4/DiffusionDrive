@@ -31,7 +31,7 @@ retry
 rtree # Used in occupancy maps
 scipy  # Used widely
 selenium # Used in bokeh export png
-setuptools==65.5.1  # Used in setup.py, pinned to not break pytorch
+setuptools==78.1.1  # Used in setup.py, pinned to not break pytorch
 Shapely>=2.0.0  # Used widely
 SQLAlchemy==1.4.27  # older versions don't work with some table definitions
 sympy  # Use for symbolic algebra
