@@ -28,7 +28,7 @@ This approach involves a one-time, heavy data-processing task to transform your 
     * **Convert Rotations:** Transform yaw from **degrees (clockwise)** to **radians (counter-clockwise)**.
 4. **Remap and Repackage:**
     * Map CARLA camera names to the expected NAVSIM camera slots.
-    * Derive the simple `(left, straight, right)` command from the more complex CARLA route information.
+    * Derive the simple discrete command (0=left, 1=straight, 2=right, 3=unknown) from the more complex CARLA route information. Note that left/right commands cover turns, lane changes, and sharp curves.
     * Package all the transformed data into the specific file structure and format NAVSIM uses (e.g., aggregated log files in Pickle or Feather format).
 5. **Mandatory Verification:** Create visualization tools to project the new 3D boxes onto 2D images and plot top-down trajectories to ensure your transformations are correct.
 
@@ -44,7 +44,12 @@ This approach involves modifying the model's data-loading pipeline to make it co
 2. **Transform Data "In-Memory":** Instead of changing the files on disk, perform the necessary transformations inside the data loader just before the data is fed to the model.
     * The same coordinate and rotation transformation logic from Approach 1 is applied here, but "on-the-fly" in your code.
 3. **Format Tensors:** Ensure the final output tensors from your new data loader (e.g., image batches, agent state vectors) have the **exact shape, data type, and normalization** that the Diffusion Drive model's `forward` method expects.
-4. **Map Driving Command:** Convert the CARLA route information into the simplified `(left, right, straight)` integer or one-hot vector the model expects.
+4. **Map Driving Command:** Convert the CARLA route information into the simplified discrete command the model expects:
+    * 0 = left (turns, lane changes, sharp curves)
+    * 1 = straight
+    * 2 = right (turns, lane changes, sharp curves)
+    * 3 = unknown (can be filtered during training)
+    * Note: Commands are based solely on desired route, NOT on obstacles or traffic signs.
 
 ---
 
@@ -67,7 +72,7 @@ This approach involves modifying the model's data-loading pipeline to make it co
 | :--- | :--- | :--- |
 | **Coordinates** | **On-Disk Conversion:** Convert all 3D points from LH to RH and save to new files. | **In-Memory Transformation:** Convert coordinates from LH to RH inside the data loader. |
 | **Rotation** | **On-Disk Conversion:** Convert all yaw values (degrees/clockwise to rad/ccw) and save. | **In-Memory Transformation:** Convert yaw values inside the data loader. |
-| **Driving Command** | **Pre-processing:** Analyze CARLA route to determine a simplified command and save it to the log. | **Live Mapping:** Map the CARLA command to the model's expected format inside the data loader. |
+| **Driving Command** | **Pre-processing:** Analyze CARLA route to determine a discrete command (0-3) and save it to the log. | **Live Mapping:** Map the CARLA command to the model's expected discrete format (0-3) inside the data loader. |
 | **Data Structure** | **Complete Restructuring:** Repackage many small files (JSONs, JPGs) into large, aggregated NAVSIM logs. | **New Parser:** Write code to read the existing CARLA folder and file structure directly. |
 | **Temporal Rate** | **Downsampling:** Discard frames to reduce the dataset from 10/20Hz to 2Hz on disk. | **Frame Selection:** The data loader's logic will only select every Nth frame to process. |
 
@@ -84,7 +89,7 @@ This approach is a simplified version of Method 2, specifically for when you're 
 3. **Minimal Adaptations:**
    * Map sensor data (cameras, LiDAR) to expected format
    * Convert data structures (JSON → pickle format)
-   * Simplify driving commands (complex routes → left/straight/right)
+   * Simplify driving commands to discrete values (complex routes → 0=left, 1=straight, 2=right, 3=unknown)
    * Handle temporal downsampling (10Hz → 2Hz)
 4. **Direct CARLA Integration:** The same loader works seamlessly with live CARLA data since no coordinate transformation is needed.
 

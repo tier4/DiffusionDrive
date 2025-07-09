@@ -417,7 +417,11 @@ class Bench2DriveFeatureBuilder(AbstractFeatureBuilder):
         # Status features
         ego_status = agent_input.ego_statuses[-1]
         features['velocity'] = torch.tensor(ego_status.ego_velocity[:2]).float()
-        features['command'] = torch.tensor(ego_status.driving_command).long()
+        # Convert integer command to one-hot if needed by model
+driving_cmd = ego_status.driving_command  # Integer 0-3
+features['command'] = torch.tensor(driving_cmd).long()
+# Or if model expects one-hot:
+# features['command_one_hot'] = F.one_hot(torch.tensor(driving_cmd), num_classes=4).float()
         
         return features
 ```
@@ -614,11 +618,19 @@ Even without coordinate transformation, you still need to:
 
    ```python
    def _simplify_command(self, carla_command: str) -> int:
-       """Convert complex CARLA commands to simple left/straight/right"""
+       """Convert complex CARLA commands to NavSim discrete commands
+       
+       NavSim commands represent desired route only:
+       0 = left (turns, lane changes, sharp curves)
+       1 = straight
+       2 = right (turns, lane changes, sharp curves)
+       3 = unknown (can be filtered during training)
+       """
        command_map = {
            'CHANGELANELEFT': 0, 'TURNLEFT': 0, 'LEFT': 0,
            'STRAIGHT': 1, 'LANEFOLLOW': 1,
-           'CHANGELANERIGHT': 2, 'TURNRIGHT': 2, 'RIGHT': 2
+           'CHANGELANERIGHT': 2, 'TURNRIGHT': 2, 'RIGHT': 2,
+           'STOP': 3, 'UNKNOWN': 3
        }
        return command_map.get(carla_command.upper(), 1)
    ```

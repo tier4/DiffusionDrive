@@ -8,28 +8,38 @@ This document contains the analysis of driving command format in DiffusionDrive 
 
 ### 1. Command Format
 
-NAVSIM uses a **4-dimensional one-hot encoded vector** for driving commands:
+According to the official NAVSIM documentation, driving commands are discrete values indicating whether the intended route is towards the left, straight or right direction. There is also a fourth command representing 'unknown', which can be used to filter out data during training.
 
-```python
-[1, 0, 0, 0]  # LEFT TURN
-[0, 1, 0, 0]  # GO STRAIGHT  
-[0, 0, 1, 0]  # RIGHT TURN
-[0, 0, 0, 1]  # STOP/OTHER
-```
+**Important Notes from NAVSIM docs:**
+- The driving command is based solely on the desired route
+- It does NOT entangle information regarding obstacles and traffic signs (unlike prior benchmarks such as nuScenes)
+- Left and right commands cover turns, lane changes and sharp curves
+- The 'unknown' command can be used to filter out data during training
+
+**Command Values:**
+- `0` = LEFT (turns, lane changes left, sharp left curves)
+- `1` = STRAIGHT (continue straight)
+- `2` = RIGHT (turns, lane changes right, sharp right curves)  
+- `3` = UNKNOWN (can be filtered during training)
 
 ### 2. Data Structure
 
-- **Type**: `numpy.ndarray[int]` with shape (4,)
+- **Type**: Single integer value (0, 1, 2, or 3)
 - **Location in code**: `navsim/common/dataclasses.py`, line 138
 - **Access path**: `agent_input.ego_statuses[-1].driving_command`
+- **Note**: While stored as an integer in the data, it may be converted to one-hot encoding for model input
 
 ### 3. Usage in Model
 
-The driving command is concatenated with velocity and acceleration to create an 8D status feature vector:
+The driving command is likely converted to a one-hot encoding before being concatenated with velocity and acceleration. The exact implementation would need verification in the specific model code:
 
 ```python
+# Possible implementation (needs verification):
+driving_cmd = agent_input.ego_statuses[-1].driving_command  # Integer 0-3
+driving_cmd_one_hot = F.one_hot(torch.tensor(driving_cmd), num_classes=4).float()  # Convert to 4D one-hot
+
 features["status_feature"] = torch.concatenate([
-    torch.tensor(agent_input.ego_statuses[-1].driving_command, dtype=torch.float32),  # 4D
+    driving_cmd_one_hot,  # 4D one-hot encoded
     torch.tensor(agent_input.ego_statuses[-1].ego_velocity, dtype=torch.float32),     # 2D
     torch.tensor(agent_input.ego_statuses[-1].ego_acceleration, dtype=torch.float32), # 2D
 ])
@@ -89,14 +99,14 @@ for cmd in sorted(commands):
 # Map to simple commands
 print('\nMapping to simple commands:')
 for cmd in sorted(commands):
-    if cmd == (1, 0, 0, 0):
-        print(f'  {list(cmd)} -> LEFT (index 0)')
-    elif cmd == (0, 1, 0, 0):
-        print(f'  {list(cmd)} -> STRAIGHT (index 1)')
-    elif cmd == (0, 0, 1, 0):
-        print(f'  {list(cmd)} -> RIGHT (index 2)')
-    elif cmd == (0, 0, 0, 1):
-        print(f'  {list(cmd)} -> UNKNOWN/STOP (index 3)')
+    if cmd == 0:
+        print(f'  {cmd} -> LEFT (turns, lane changes, sharp curves)')
+    elif cmd == 1:
+        print(f'  {cmd} -> STRAIGHT')
+    elif cmd == 2:
+        print(f'  {cmd} -> RIGHT (turns, lane changes, sharp curves)')
+    elif cmd == 3:
+        print(f'  {cmd} -> UNKNOWN (can be filtered)')
 ```
 
 ### Script 3: Find All Command Types Across Dataset
@@ -134,11 +144,11 @@ for cmd, files in sorted(all_commands.items()):
     print(f'  Example: {files[0]}')
 
 print('\n\nCommand encoding summary:')
-print('NAVSIM uses 4D one-hot encoding for driving commands:')
-print('  [1, 0, 0, 0] = LEFT TURN')
-print('  [0, 1, 0, 0] = GO STRAIGHT') 
-print('  [0, 0, 1, 0] = RIGHT TURN')
-print('  [0, 0, 0, 1] = STOP/OTHER')
+print('NAVSIM uses discrete integer values for driving commands:')
+print('  0 = LEFT (turns, lane changes, sharp curves)')
+print('  1 = STRAIGHT') 
+print('  2 = RIGHT (turns, lane changes, sharp curves)')
+print('  3 = UNKNOWN (can be filtered during training)')
 ```
 
 ### Script 4: Analyze Command Distribution
@@ -178,32 +188,32 @@ for cmd, count in command_counter.most_common():
 When converting from CARLA/Bench2Drive commands to NAVSIM format:
 
 ```python
-def carla_to_navsim_command(carla_command: str) -> np.ndarray:
-    """Convert CARLA command string to NAVSIM one-hot encoding"""
+def carla_to_navsim_command(carla_command: str) -> int:
+    """Convert CARLA command string to NAVSIM integer command"""
     
-    # Define mapping
+    # Define mapping based on NAVSIM documentation
     command_map = {
-        # Left commands
-        'CHANGELANELEFT': [1, 0, 0, 0],
-        'TURNLEFT': [1, 0, 0, 0],
-        'LEFT': [1, 0, 0, 0],
+        # Left commands (turns, lane changes, sharp curves)
+        'CHANGELANELEFT': 0,
+        'TURNLEFT': 0,
+        'LEFT': 0,
         
         # Straight commands
-        'STRAIGHT': [0, 1, 0, 0],
-        'LANEFOLLOW': [0, 1, 0, 0],
+        'STRAIGHT': 1,
+        'LANEFOLLOW': 1,
         
-        # Right commands
-        'CHANGELANERIGHT': [0, 0, 1, 0],
-        'TURNRIGHT': [0, 0, 1, 0],
-        'RIGHT': [0, 0, 1, 0],
+        # Right commands (turns, lane changes, sharp curves)
+        'CHANGELANERIGHT': 2,
+        'TURNRIGHT': 2,
+        'RIGHT': 2,
         
-        # Stop/Other
-        'STOP': [0, 0, 0, 1],
-        'UNKNOWN': [0, 0, 0, 1]
+        # Unknown (can be filtered during training)
+        'STOP': 3,  # Could be mapped to unknown or handled differently
+        'UNKNOWN': 3
     }
     
     # Default to straight if command not found
-    return np.array(command_map.get(carla_command.upper(), [0, 1, 0, 0]), dtype=np.int32)
+    return command_map.get(carla_command.upper(), 1)
 ```
 
 ## Dataset File Structure
@@ -211,7 +221,7 @@ def carla_to_navsim_command(carla_command: str) -> np.ndarray:
 Each pickle file in NAVSIM contains a list of frames, where each frame is a dictionary with keys:
 
 - `token`: Unique frame identifier
-- `driving_command`: 4D one-hot encoded command vector
+- `driving_command`: Integer command (0=left, 1=straight, 2=right, 3=unknown)
 - `ego2global_translation`: Ego vehicle position
 - `ego2global_rotation`: Ego vehicle rotation (quaternion)
 - `ego_dynamic_state`: [vx, vy, ax, ay] - velocity and acceleration
@@ -222,11 +232,12 @@ Each pickle file in NAVSIM contains a list of frames, where each frame is a dict
 
 ## Notes
 
-1. The one-hot encoding ensures that exactly one command is active at any time (sum = 1)
-2. The 4D vector is treated as a continuous feature in the neural network
-3. Most frames in highway/straight road scenarios will have [0, 1, 0, 0] (straight)
-4. Intersection and turning scenarios will have more varied commands
-5. The [0, 0, 0, 1] command appears to be used for stop signs, red lights, or other special cases
+1. Commands are discrete integers (0-3) based solely on the desired route
+2. Commands do NOT include information about obstacles or traffic signs
+3. Most frames in highway/straight road scenarios will have command value 1 (straight)
+4. Commands 0 and 2 cover all left/right maneuvers including turns, lane changes, and sharp curves
+5. Command 3 (unknown) can be used to filter out ambiguous or problematic data during training
+6. This design decouples route intention from reactive behavior (unlike nuScenes)
 
 ## Usage Example
 
@@ -238,13 +249,18 @@ driving_cmd = agent_input.ego_statuses[-1].driving_command
 print(f"Current command: {driving_cmd}")
 
 # Interpret the command
-if np.array_equal(driving_cmd, [1, 0, 0, 0]):
-    action = "Turn Left"
-elif np.array_equal(driving_cmd, [0, 1, 0, 0]):
-    action = "Go Straight"
-elif np.array_equal(driving_cmd, [0, 0, 1, 0]):
-    action = "Turn Right"
+if driving_cmd == 0:
+    action = "Left (turn/lane change/sharp curve)"
+elif driving_cmd == 1:
+    action = "Straight"
+elif driving_cmd == 2:
+    action = "Right (turn/lane change/sharp curve)"
+elif driving_cmd == 3:
+    action = "Unknown (can be filtered)"
 else:
-    action = "Stop/Other"
+    action = "Invalid command"
 print(f"Action: {action}")
+
+# If the model expects one-hot encoding:
+driving_cmd_one_hot = F.one_hot(torch.tensor(driving_cmd), num_classes=4)
 ```
