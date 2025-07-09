@@ -24,7 +24,7 @@ This approach involves a one-time, heavy data-processing task to transform your 
 1. **Develop a Conversion Script:** Write a comprehensive script that iterates through every scenario in the Bench2Drive dataset.
 2. **Downsample Data:** CARLA data is high-frequency (e.g., 10-20Hz). You must downsample the frames and annotations to match NAVSIM's **2Hz** rate.
 3. **Perform Core Transformations:** For every data point in every sampled frame, you must:
-    * **Convert Coordinates:** Transform 3D points from CARLA's **Left-Handed** system to NAVSIM's **Right-Handed** system (e.g., `[x, y, z]` -> `[x, -y, z]`).
+    * **Convert Coordinates:** Transform 3D points from CARLA's coordinate system to NAVSIM's coordinate system (Note: exact transformation needs verification - conflicting information exists).
     * **Convert Rotations:** Transform yaw from **degrees (clockwise)** to **radians (counter-clockwise)**.
 4. **Remap and Repackage:**
     * Map CARLA camera names to the expected NAVSIM camera slots.
@@ -86,11 +86,13 @@ This approach is a simplified version of Method 2, specifically for when you're 
 
 1. **Implement a Simplified Data Loader:** Create a data loader that reads Bench2Drive format and adapts it to DiffusionDrive's expected structure, but WITHOUT coordinate transformations.
 2. **Keep CARLA Coordinates:** Since both training and evaluation use CARLA data, keep everything in CARLA's coordinate system.
-3. **Minimal Adaptations:**
+3. **Required Adaptations (still substantial effort):**
    * Map sensor data (cameras, LiDAR) to expected format
-   * Convert data structures (JSON → pickle format)
+   * Convert per-frame file structure to scene-based aggregated format
+   * Create scene tokens and proper frame groupings
    * Simplify driving commands to discrete values (complex routes → 0=left, 1=straight, 2=right, 3=unknown)
    * Handle temporal downsampling (10Hz → 2Hz)
+   * Note: "Minimal" is relative - this still requires significant data structure mapping
 4. **Direct CARLA Integration:** The same loader works seamlessly with live CARLA data since no coordinate transformation is needed.
 
 ### Key Differences from Method 2
@@ -98,7 +100,7 @@ This approach is a simplified version of Method 2, specifically for when you're 
 | Aspect | Method 2 (Full Adaptation) | Method 3 (CARLA-Native) |
 | :--- | :--- | :--- |
 | **Coordinate Transform** | ✅ CARLA ↔ NavSim | ❌ Stay in CARLA |
-| **Rotation Conversion** | ✅ Degrees ↔ Radians, CW ↔ CCW | ⚠️ Only degrees → radians |
+| **Rotation Conversion** | ✅ Degrees ↔ Radians, CW ↔ CCW | ⚠️ Degrees → radians AND sign flip (CW → CCW) |
 | **Mixed Dataset Support** | ✅ Can train on both | ❌ CARLA only |
 | **NavSim Metric Compatibility** | ✅ Full compatibility | ❌ May need adaptation |
 | **Implementation Complexity** | Higher | Lower |

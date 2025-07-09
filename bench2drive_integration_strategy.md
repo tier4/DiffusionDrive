@@ -25,6 +25,16 @@ Complete adaptation layer supporting both CARLA and NavSim coordinate systems wi
 
 Simplified adaptation keeping everything in CARLA coordinates, perfect for CARLA-specific projects.
 
+## Important Note on Coordinate Transformations
+
+**WARNING**: The coordinate transformation logic between CARLA and NavSim shows conflicting information in different sources. Before implementing Method 2, you must verify the correct transformation by:
+1. Loading sample data from both datasets
+2. Visualizing the coordinate systems
+3. Testing transformations with known reference points
+4. Validating with actual trajectory and bounding box projections
+
+This uncertainty further validates choosing Method 3 for CARLA-only projects, as it avoids these ambiguities entirely.
+
 ## Architecture Design
 
 ### 1. Core Components
@@ -78,8 +88,13 @@ class CoordinateTransformer:
         """
         Transform CARLA position to NavSim coordinate system
         
-        CARLA (left-handed):  X-forward, Y-right, Z-up
-        NavSim (right-handed): X-right, Y-forward, Z-up
+        WARNING: Coordinate transformation logic needs verification.
+        Different sources show conflicting transformations:
+        - Option 1: [x, y, z] -> [x, -y, z]
+        - Option 2: [x, y, z] -> [-y, x, z]
+        
+        This implementation uses Option 2, but should be validated
+        with actual data visualization.
         """
         return np.array([
             -carla_pos['y'],  # CARLA Y → NavSim -X
@@ -93,7 +108,10 @@ class CoordinateTransformer:
         Transform CARLA rotation to NavSim
         
         CARLA: degrees, clockwise positive
-        NavSim: radians, counter-clockwise positive
+        NavSim/PyTorch convention: radians, counter-clockwise positive
+        
+        This requires both unit conversion AND sign flip:
+        yaw_rad = -np.radians(carla_yaw_deg)
         """
         # Convert yaw from degrees to radians and flip direction
         return -np.radians(carla_rot['yaw'])
@@ -268,8 +286,8 @@ class ActorTypeMapper:
         'vehicle.bicycle': 'bicycle',
         'walker.pedestrian': 'pedestrian',
         'traffic.traffic_light': 'traffic_light',
-        'traffic.stop_sign': 'traffic_cone',  # NavSim doesn't have stop signs
-        'traffic.speed_limit': 'traffic_cone'
+        'traffic.stop_sign': 'traffic_sign',  # Preserve semantic meaning
+        'traffic.speed_limit': 'traffic_sign'  # Group traffic signs together
     }
     
     @classmethod
@@ -548,7 +566,7 @@ python navsim/planning/script/run_training.py \
 
 ### Overview
 
-Method 3 is a simplified version of Method 2, designed for when you're training and evaluating exclusively within the CARLA ecosystem. No coordinate transformations are needed.
+Method 3 is designed for when you're training and evaluating exclusively within the CARLA ecosystem. While no coordinate transformations are needed, it still requires substantial data structure mapping effort.
 
 ### Key Simplifications
 
@@ -586,7 +604,7 @@ class CARLANativeLoader(Bench2DriveSceneLoader):
             processed_actor = {
                 'translation': [actor['location']['x'], actor['location']['y'], actor['location']['z']],
                 'size': [2 * actor['extent']['x'], 2 * actor['extent']['y'], 2 * actor['extent']['z']],
-                'rotation': np.radians(actor['rotation']['yaw']),  # Only convert degrees to radians
+                'rotation': -np.radians(actor['rotation']['yaw']),  # Convert degrees to radians AND flip sign (CW to CCW)
                 'velocity': [actor['velocity']['x'], actor['velocity']['y'], 0],
                 'type': self._map_actor_type(actor['type_id'])
             }
@@ -597,12 +615,14 @@ class CARLANativeLoader(Bench2DriveSceneLoader):
 
 ### What Still Needs Adaptation
 
-Even without coordinate transformation, you still need to:
+Even without coordinate transformation, you still need to handle substantial tasks:
 
-1. **Data Structure Mapping**
-   - Convert Bench2Drive's file structure to DiffusionDrive's expected format
-   - Create scene tokens and frame groupings
-   - Handle pickle serialization
+1. **Data Structure Mapping (Significant Effort)**
+   - Convert Bench2Drive's per-frame file structure to NAVSIM's aggregated scene-based format
+   - Create scene tokens with proper temporal relationships
+   - Implement sliding window logic for frame groupings
+   - Handle pickle serialization with proper data organization
+   - Build index of scenes for efficient access
 
 2. **Sensor Mapping**
    - Map 6 CARLA cameras to 8 expected cameras (with duplicates)
@@ -671,6 +691,8 @@ def test_coordinate_transformation():
     """Verify coordinate transformations are correct"""
     
     # Test position transformation
+    # WARNING: This test assumes Option 2 transformation logic
+    # Actual transformation needs verification with real data
     carla_pos = {'x': 10.0, 'y': 5.0, 'z': 2.0}
     navsim_pos = CoordinateTransformer.carla_to_navsim_position(carla_pos)
     assert np.allclose(navsim_pos, [-5.0, 10.0, 2.0])
