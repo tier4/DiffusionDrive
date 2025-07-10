@@ -94,6 +94,13 @@ scripts/
 
 **Note**: `--lr` and `--lr-list` are mutually exclusive. When using `--lr-list`, provide exactly one learning rate per batch size.
 
+**Experiment Naming**: The script now includes the learning rate in experiment names:
+- Format: `{base_name}_bs{batch_size}_lr{learning_rate}_ep{epochs}`
+- Learning rate formatting in names:
+  - Scientific notation: `1e-4` → `1e4`
+  - Decimal notation: `0.001` → `0p001`
+- Default: When no custom LR is specified, uses `lr6e4` (the default for diffusiondrive_agent)
+
 ### eval.sh
 
 - `--checkpoint`: Path to checkpoint file (required)
