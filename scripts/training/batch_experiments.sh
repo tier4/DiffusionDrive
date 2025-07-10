@@ -118,7 +118,18 @@ for i in "${!BATCH_SIZE_ARRAY[@]}"; do
     fi
     echo "========================================" | tee -a "$LOG_FILE"
 
-    EXPERIMENT_NAME="${BASE_NAME}_bs${BATCH_SIZE}_ep${MAX_EPOCHS}"
+    # Build experiment name with learning rate
+    if [ ! -z "$CURRENT_LR" ]; then
+        # Format learning rate for filename:
+        # - Replace decimal point with 'p' (e.g., 0.001 -> 0p001)
+        # - Replace 'e-' with 'e' (e.g., 1e-4 -> 1e4)
+        # - Replace 'e+' with 'e' (e.g., 1e+3 -> 1e3)
+        LR_FORMATTED=$(echo "$CURRENT_LR" | sed 's/\./p/g' | sed 's/e-/e/g' | sed 's/e+/e/g')
+        EXPERIMENT_NAME="${BASE_NAME}_bs${BATCH_SIZE}_lr${LR_FORMATTED}_ep${MAX_EPOCHS}"
+    else
+        # Use default learning rate (6e-4 for diffusiondrive_agent)
+        EXPERIMENT_NAME="${BASE_NAME}_bs${BATCH_SIZE}_lr6e4_ep${MAX_EPOCHS}"
+    fi
 
     # Build training command
     TRAIN_CMD=("$SCRIPT_DIR/train.sh"
