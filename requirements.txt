@@ -13,7 +13,7 @@ geopandas>=0.12.1  # Used to read maps
 guppy3==3.1.2
 hydra-core==1.2.0  # Used for configs
 joblib
-laspy  # Used for LiDAR data for Bench2Drive
+laspy[lazrs]  # Used for LiDAR data for Bench2Drive
 matplotlib  # Used for rendering
 nest_asyncio  # Used to nest event loops when running nuBoard/jupyter
 numpy==1.23.4

@@ -76,18 +76,22 @@ class Bench2DriveFeatureBuilder(AbstractFeatureBuilder):
         # Select front cameras in left-to-right order for stitching
         # cam_l0 (left), cam_f0 (front), cam_r0 (right)
         front_camera_images = []
-        
+
         # Check and collect valid camera images
-        for cam_name, cam in [("cam_l0", current_cameras.cam_l0), 
-                               ("cam_f0", current_cameras.cam_f0), 
-                               ("cam_r0", current_cameras.cam_r0)]:
+        for cam_name, cam in [
+            ("cam_l0", current_cameras.cam_l0),
+            ("cam_f0", current_cameras.cam_f0),
+            ("cam_r0", current_cameras.cam_r0),
+        ]:
             if cam.image is None:
                 print(f"Warning: {cam_name} image is None, using placeholder")
                 # Create placeholder image
                 placeholder = np.zeros((900, 1600, 3), dtype=np.uint8)
                 front_camera_images.append(placeholder)
             elif len(cam.image.shape) != 3 or cam.image.shape[2] != 3:
-                print(f"Warning: {cam_name} has invalid shape {cam.image.shape}, using placeholder")
+                print(
+                    f"Warning: {cam_name} has invalid shape {cam.image.shape}, using placeholder"
+                )
                 placeholder = np.zeros((900, 1600, 3), dtype=np.uint8)
                 front_camera_images.append(placeholder)
             else:
@@ -101,15 +105,15 @@ class Bench2DriveFeatureBuilder(AbstractFeatureBuilder):
             print(f"Error concatenating images: {e}")
             # Return black image as fallback
             return torch.zeros((3, 256, 1024), dtype=torch.float32)
-        
+
         # Check if stitched image is valid before resizing
         if stitched_image.size == 0:
             print("Warning: Stitched image is empty, returning black image")
             return torch.zeros((3, 256, 1024), dtype=torch.float32)
-        
+
         # Resize the stitched image to target size [256, 1024, 3]
         stitched_resized = cv2.resize(stitched_image, (1024, 256))
-        
+
         # Convert to tensor and change to CHW format
         stitched = torch.from_numpy(stitched_resized).permute(2, 0, 1).float()
 
@@ -133,7 +137,8 @@ class Bench2DriveFeatureBuilder(AbstractFeatureBuilder):
             return torch.zeros((1, 256, 256), dtype=torch.float32)
 
         # Extract x, y coordinates (keep in CARLA coordinates)
-        points_xy = current_lidar[:, :2].numpy()
+        # current_lidar is already a numpy array
+        points_xy = current_lidar[:, :2]
 
         # Define BEV parameters
         bev_size = 256

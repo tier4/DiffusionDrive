@@ -6,7 +6,6 @@ Supports both NAVSIM and Bench2Drive datasets.
 import logging
 from typing import List, Union
 
-import torch
 from hydra.utils import instantiate
 from omegaconf import DictConfig
 
