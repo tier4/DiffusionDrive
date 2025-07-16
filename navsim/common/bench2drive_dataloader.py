@@ -72,7 +72,7 @@ class Bench2DriveSceneLoader:
             else:
                 # Scenario type - find all matching directories
                 scenario_dirs = list(self.config.data_root.glob(f"{scenario_name}_*"))
-            
+
             for scenario_path in scenario_dirs:
                 if not scenario_path.exists() or not scenario_path.is_dir():
                     print(f"Warning: Scenario {scenario_path.name} not found or not a directory")
@@ -80,7 +80,7 @@ class Bench2DriveSceneLoader:
 
                 # For mini dataset, scenario_path is already the run directory
                 run_dir = scenario_path
-                
+
                 # Check if annotation directory exists
                 anno_dir = run_dir / "anno"
                 if not anno_dir.exists():
@@ -210,9 +210,6 @@ def map_carla_command_to_discrete(command: int) -> int:
         Discrete command (0-3)
     """
     # Bench2DriveZoo transformation (from vad_b2d_agent_visualize.py lines 390-392):
-    # if command < 0:
-    #     command = 4
-    # command -= 1
     if command < 0:
         command = 4
     command -= 1
@@ -225,7 +222,7 @@ def map_carla_command_to_discrete(command: int) -> int:
     # LANEFOLLOW (4) → 3
     # CHANGELANELEFT (5) → 4
     # CHANGELANERIGHT (6) → 5
-    
+
     # The "swapping" issue:
     # Bench2DriveZoo's transformation creates an intermediate representation where:
     # - CARLA's LEFT (1) becomes 0
