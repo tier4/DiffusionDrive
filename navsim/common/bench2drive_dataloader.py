@@ -209,27 +209,49 @@ def map_carla_command_to_discrete(command: int) -> int:
     Returns:
         Discrete command (0-3)
     """
-    # Handle the conversion as found in Bench2DriveZoo
+    # Bench2DriveZoo transformation (from vad_b2d_agent_visualize.py lines 390-392):
+    # if command < 0:
+    #     command = 4
+    # command -= 1
     if command < 0:
         command = 4
     command -= 1
 
-    # Map to discrete values based on analysis
-    # After conversion: 0=RIGHT, 1=LEFT, 2=STRAIGHT in the model
-    # But we need NavSim format: 0=LEFT, 1=STRAIGHT, 2=RIGHT
+    # After Bench2DriveZoo transformation:
+    # VOID (-1) → 4 → 3
+    # LEFT (1) → 0
+    # RIGHT (2) → 1
+    # STRAIGHT (3) → 2
+    # LANEFOLLOW (4) → 3
+    # CHANGELANELEFT (5) → 4
+    # CHANGELANERIGHT (6) → 5
+    
+    # The "swapping" issue:
+    # Bench2DriveZoo's transformation creates an intermediate representation where:
+    # - CARLA's LEFT (1) becomes 0
+    # - CARLA's RIGHT (2) becomes 1
+    # - CARLA's STRAIGHT (3) becomes 2
+    #
+    # But NavSim expects:
+    # - 0 = LEFT
+    # - 1 = STRAIGHT
+    # - 2 = RIGHT
+    #
+    # So we need to remap to match NavSim's format while preserving the original
+    # CARLA command semantics (LEFT → LEFT, RIGHT → RIGHT, STRAIGHT → STRAIGHT)
 
     # Remap to correct NavSim format
-    if command == 0:  # Was LEFT in CARLA, became 0 (RIGHT in model)
+    if command == 0:  # Was LEFT in CARLA (1 → 0 after transformation)
+        return 0  # LEFT in NavSim
+    elif command == 1:  # Was RIGHT in CARLA (2 → 1 after transformation)
         return 2  # RIGHT in NavSim
-    elif command == 1:  # Was RIGHT in CARLA, became 1 (LEFT in model)
-        return 0  # LEFT in NavSim
-    elif command == 2:  # Was STRAIGHT in CARLA, became 2
+    elif command == 2:  # Was STRAIGHT in CARLA (3 → 2 after transformation)
         return 1  # STRAIGHT in NavSim
-    elif command == 3:  # Was LANEFOLLOW in CARLA
+    elif command == 3:  # Was LANEFOLLOW in CARLA (4 → 3 after transformation)
         return 1  # STRAIGHT in NavSim
-    elif command == 4:  # Was CHANGELANELEFT
+    elif command == 4:  # Was CHANGELANELEFT in CARLA (5 → 4 after transformation)
         return 0  # LEFT in NavSim
-    elif command == 5:  # Was CHANGELANERIGHT
+    elif command == 5:  # Was CHANGELANERIGHT in CARLA (6 → 5 after transformation)
         return 2  # RIGHT in NavSim
     else:
         return 3  # UNKNOWN
