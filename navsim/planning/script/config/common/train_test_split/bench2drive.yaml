@@ -1,0 +1,95 @@
+# Bench2Drive dataset configuration
+
+# Dataset type identifier
+dataset_type: bench2drive
+
+# Scene filter for compatibility with NAVSIM structure
+scene_filter:
+  _target_: navsim.common.dataclasses.SceneFilter
+  _convert_: all
+  log_names: null # Use all available scenarios
+  tokens: null
+  num_frames: 30 # 15 seconds at 2Hz
+  num_history_frames: 4
+  num_future_frames: 26
+  frame_interval: 1 # Already downsampled in loader
+  has_route: true
+  max_scenes: null
+
+# Bench2Drive specific settings
+bench2drive:
+  _target_: navsim.common.bench2drive_dataloader.Bench2DriveConfig
+  data_root: ${oc.env:BENCH2DRIVE_ROOT,/workspace/Bench2Drive-Base}
+  sampling_rate: 5 # Downsample from 10Hz to 2Hz
+  num_frames: ${scene_filter.num_frames}
+  num_history_frames: ${scene_filter.num_history_frames}
+  num_future_frames: ${scene_filter.num_future_frames}
+  extract_tar: true # Auto-extract tar.gz files
+
+  # Training scenarios (based on Bench2Drive paper split)
+  scenarios:
+    train:
+      [
+        "Accident",
+        "AccidentTwoWays",
+        "BlockedIntersection",
+        "ConstructionObstacle",
+        "ConstructionObstacleTwoWays",
+        "ControlLoss",
+        "CrossingBicycleFlow",
+        "DynamicObjectCrossing",
+        "EnterActorFlow",
+        "HardBreakRoute",
+        "HazardAtSideLane",
+        "HazardAtSideLaneTwoWays",
+        "HighwayCutIn",
+        "HighwayExit",
+        "InterurbanActorFlow",
+        "InterurbanAdvancedActorFlow",
+        "InvadingTurn",
+        "LaneChange",
+        "MergerIntoSlowTraffic",
+        "MergerIntoSlowTrafficV2",
+        "NonSignalizedJunctionLeftTurn",
+        "NonSignalizedJunctionLeftTurnEnterFlow",
+        "NonSignalizedJunctionRightTurn",
+        "OppositeVehicleRunningRedLight",
+        "OppositeVehicleTakingPriority",
+        "ParkingCutIn",
+        "ParkingExit",
+        "PedestrianCrossing",
+        "SignalizedJunctionLeftTurn",
+        "SignalizedJunctionRightTurn",
+        "StaticCutIn",
+        "VehicleOpensDoorTwoWays",
+        "YieldToEmergencyVehicle",
+      ]
+
+    val:
+      [
+        "ConstructionObstacle",
+        "CrossingBicycleFlow",
+        "HardBreakRoute",
+        "HighwayCutIn",
+        "InterurbanActorFlow",
+        "LaneChange",
+        "MergerIntoSlowTrafficV2",
+        "NonSignalizedJunctionLeftTurnEnterFlow",
+        "OppositeVehicleRunningRedLight",
+        "ParkingCutIn",
+      ]
+
+    test: [
+        # Use validation scenarios for now
+        # Real test set would be held out
+        "ConstructionObstacle",
+        "CrossingBicycleFlow",
+        "HardBreakRoute",
+        "HighwayCutIn",
+        "InterurbanActorFlow",
+        "LaneChange",
+        "MergerIntoSlowTrafficV2",
+        "NonSignalizedJunctionLeftTurnEnterFlow",
+        "OppositeVehicleRunningRedLight",
+        "ParkingCutIn",
+      ]

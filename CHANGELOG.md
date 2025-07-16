@@ -7,6 +7,98 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **Note: Changes marked as "Community Contribution" were contributed by community members and are not from the original DiffusionDrive authors.**
 
+## [Unreleased] - 2025-07-16 - Community Contribution
+
+### Added - Bench2Drive Dataset Integration
+
+#### Core Integration Components
+- **Bench2Drive Dataset Support**: Complete integration of Bench2Drive dataset for training
+  - `navsim/common/bench2drive_dataloader.py` - Scene loader implementing Method 3 (CARLA-native pipeline)
+  - `navsim/common/bench2drive_scene.py` - Scene representation maintaining CARLA coordinates
+  - `navsim/agents/diffusiondrive/transfuser_features_b2d.py` - Feature/target builders for Bench2Drive data
+  - Temporal downsampling from 10Hz to 2Hz for training compatibility
+  - Command mapping from CARLA navigation commands to discrete values
+  - Camera stitching (3 front cameras: left, front, right) to 1024x256 resolution
+  - LiDAR BEV histogram generation (256x256) from LAZ point clouds
+
+#### Training Pipeline
+- **Custom Training Scripts**:
+  - `navsim/planning/script/run_bench2drive_caching.py` - Custom caching for Bench2Drive structure
+  - `navsim/planning/script/run_bench2drive_training.py` - Training script with Bench2Drive dataset
+  - `navsim/planning/training/bench2drive_dataset.py` - Dataset wrapper for PyTorch compatibility
+  - `navsim/planning/training/dataset_factory.py` - Factory pattern for dataset creation
+  - `scripts/train_bench2drive.sh` - Shell script for end-to-end training
+
+#### Configuration
+- **Hydra Configuration Files**:
+  - `navsim/planning/script/config/common/train_test_split/bench2drive.yaml` - Dataset configuration
+  - `navsim/planning/script/config/common/agent/diffusiondrive_agent_b2d.yaml` - Agent configuration
+  - Support for scenario-based train/val/test splits
+  - Configurable sampling rates and frame counts
+
+#### Testing and Validation
+- **Comprehensive Test Suite**:
+  - `tests/test_bench2drive_integration.py` - Integration tests for full pipeline
+  - `tests/test_bench2drive_minimal.py` - Minimal pytest tests with fixtures
+  - Scene loading, feature extraction, and target generation validation
+  - Tensor shape and value validation for all outputs
+
+#### Documentation and Analysis
+- **Documentation**:
+  - `BENCH2DRIVE_INTEGRATION.md` - Complete integration documentation
+  - `becn2drive_category_mapping_strategy.md` - Category mapping strategy
+  - `docs/bench2drive_visualization_testing.md` - Visualization testing procedures
+- **Analysis Tools**:
+  - `notebooks/bench2drive_cache_visualization.ipynb` - Data visualization and validation notebook
+
+#### Dependencies and Environment
+- **New Dependencies**:
+  - Added `laspy` for LAZ LiDAR file processing
+  - Updated Docker configuration and requirements.txt
+- **Testing Framework**:
+  - Migrated to pytest with proper fixtures and assertions
+  - Comprehensive test coverage for all integration components
+
+### Changed
+
+#### Development Guidelines
+- **CLAUDE.md Updates**:
+  - Added testing guidelines: Use pytest, put tests under ./tests folder
+  - Added code style guidelines: Module imports at top, use black formatter
+  - Updated all Python command references from `python` to `python3`
+
+#### Code Quality Improvements
+- **Import Organization**: Standardized import ordering across all files
+- **Error Handling**: Added comprehensive error handling for missing/invalid data
+- **Type Hints**: Improved type hints and documentation throughout codebase
+
+### Technical Details
+
+#### Dataset Structure Handling
+- **CARLA-Native Approach**: Maintains original CARLA coordinate system without transformation
+- **Flexible Scenario Loading**: Supports both full scenario paths and pattern matching
+- **Robust Data Validation**: Handles missing cameras, empty LiDAR data, and invalid annotations
+- **Memory Efficient**: Caches annotations and sensor data to minimize I/O
+
+#### Feature Processing
+- **Camera Processing**: 
+  - Horizontal stitching of 3 front cameras (left, front, right)
+  - Efficient single-resize approach instead of per-camera resizing
+  - Proper handling of missing or invalid camera data
+- **LiDAR Processing**:
+  - BEV histogram generation from LAZ point clouds
+  - Configurable range and resolution parameters
+  - Intensity normalization and clipping
+- **Status Features**:
+  - One-hot encoding of driving commands (4 classes)
+  - Velocity and acceleration extraction from annotations
+  - Proper tensor type handling for PyTorch compatibility
+
+#### Training Compatibility
+- **Multi-Task Learning**: Supports trajectory prediction, agent detection, and BEV segmentation
+- **Batch Processing**: Efficient batching for training with proper tensor shapes
+- **Temporal Consistency**: Maintains temporal relationships in downsampled data
+
 ## [Unreleased] - 2025-07-08 - Community Contribution
 
 ### Docker Updates

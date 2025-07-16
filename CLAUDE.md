@@ -34,15 +34,15 @@ pip install -e .
 ### Dataset Caching (Required before training/evaluation)
 ```bash
 # Cache training dataset
-python navsim/planning/script/run_dataset_caching.py agent=diffusiondrive_agent experiment_name=training_diffusiondrive_agent train_test_split=navtrain
+python3 navsim/planning/script/run_dataset_caching.py agent=diffusiondrive_agent experiment_name=training_diffusiondrive_agent train_test_split=navtrain
 
 # Cache evaluation dataset  
-python navsim/planning/script/run_metric_caching.py train_test_split=navtest cache.cache_path=$NAVSIM_EXP_ROOT/metric_cache
+python3 navsim/planning/script/run_metric_caching.py train_test_split=navtest cache.cache_path=$NAVSIM_EXP_ROOT/metric_cache
 ```
 
 ### Training
 ```bash
-python $NAVSIM_DEVKIT_ROOT/navsim/planning/script/run_training.py \
+python3 $NAVSIM_DEVKIT_ROOT/navsim/planning/script/run_training.py \
     agent=diffusiondrive_agent \
     experiment_name=training_diffusiondrive_agent \
     train_test_split=navtrain \
@@ -59,7 +59,7 @@ python $NAVSIM_DEVKIT_ROOT/navsim/planning/script/run_training.py \
 export CKPT=/path/to/checkpoint.pth
 
 # Run evaluation
-python $NAVSIM_DEVKIT_ROOT/navsim/planning/script/run_pdm_score.py \
+python3 $NAVSIM_DEVKIT_ROOT/navsim/planning/script/run_pdm_score.py \
     train_test_split=navtest \
     agent=diffusiondrive_agent \
     worker=ray_distributed \
@@ -69,7 +69,7 @@ python $NAVSIM_DEVKIT_ROOT/navsim/planning/script/run_pdm_score.py \
 
 ### Testing CUDA/PyTorch Setup
 ```bash
-python test_cuda_torch.py
+python3 test_cuda_torch.py
 ```
 
 ## Architecture Overview
@@ -127,3 +127,14 @@ Environment variables:
 - For CUDA errors, verify PyTorch installation with `test_cuda_torch.py`
 - Training requires significant GPU memory (recommend 32GB+ for batch size 32)
 - Evaluation uses Ray distributed computing - ensure sufficient system resources
+
+## Development Notes
+- There is not 'python', just 'python3'
+
+## Testing Guidelines
+- Use pytest for testing
+- Put tests under ./tests folder
+
+## Code Style Guidelines
+- Module level import should be at the top of the file
+- Should use black as python formatter

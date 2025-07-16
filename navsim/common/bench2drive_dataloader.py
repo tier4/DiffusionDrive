@@ -1,0 +1,235 @@
+"""
+Bench2Drive dataset loader for CARLA-native training.
+Implements Method 3 from bench2drive_integration_strategy.md
+"""
+
+import gzip
+import json
+import tarfile
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+
+import numpy as np
+
+
+@dataclass
+class Bench2DriveConfig:
+    """Configuration for Bench2Drive dataset loading."""
+
+    data_root: Path
+    scenarios: List[str]  # List of scenario names to load
+    sampling_rate: int = 5  # Downsample from 10Hz to 2Hz (take every 5th frame)
+    num_frames: int = 30  # Number of frames per scene (15 seconds at 2Hz)
+    num_history_frames: int = 4  # Past frames
+    num_future_frames: int = 26  # Future frames
+    extract_tar: bool = True  # Whether to extract tar files
+
+
+class Bench2DriveSceneLoader:
+    """
+    Scene loader for Bench2Drive dataset.
+    Implements CARLA-native loading (Method 3) without coordinate transformations.
+    """
+
+    def __init__(
+        self,
+        config: Bench2DriveConfig,
+        planner: Optional[any] = None,
+        trajectory_sampling: Optional[any] = None,
+    ):
+        """
+        Initialize Bench2Drive scene loader.
+
+        Args:
+            config: Dataset configuration
+            planner: Optional planner for expert demonstrations
+            trajectory_sampling: Trajectory sampling configuration
+        """
+        self.config = config
+        self.planner = planner
+        self.trajectory_sampling = trajectory_sampling
+
+        # Build scene index
+        self._build_scene_index()
+
+    def _build_scene_index(self) -> None:
+        """Build index of available scenes from dataset."""
+        self.scenes = {}
+        self.scene_tokens = []
+
+        # Check if data needs extraction
+        if self.config.extract_tar:
+            self._extract_tar_files()
+
+        # Iterate through scenarios
+        for scenario_name in self.config.scenarios:
+            # Check if this is a full scenario path (e.g., "ConstructionObstacle_Town05_Route68_Weather8")
+            # or just a scenario type (e.g., "ConstructionObstacle")
+            if "_Town" in scenario_name:
+                # Full scenario path - use directly
+                scenario_dirs = [self.config.data_root / scenario_name]
+            else:
+                # Scenario type - find all matching directories
+                scenario_dirs = list(self.config.data_root.glob(f"{scenario_name}_*"))
+            
+            for scenario_path in scenario_dirs:
+                if not scenario_path.exists() or not scenario_path.is_dir():
+                    print(f"Warning: Scenario {scenario_path.name} not found or not a directory")
+                    continue
+
+                # For mini dataset, scenario_path is already the run directory
+                run_dir = scenario_path
+                
+                # Check if annotation directory exists
+                anno_dir = run_dir / "anno"
+                if not anno_dir.exists():
+                    continue
+
+                # Get all frame annotations
+                frames = sorted(anno_dir.glob("*.json.gz"))
+
+                if len(frames) == 0:
+                    continue
+
+                # Apply temporal downsampling (10Hz → 2Hz)
+                sampled_frames = frames[:: self.config.sampling_rate]
+
+                # Create scenes with sliding window
+                for i in range(len(sampled_frames) - self.config.num_frames + 1):
+                    scene_frames = sampled_frames[i : i + self.config.num_frames]
+
+                    # Generate unique token
+                    token = f"{scenario_path.name}_{i:05d}"
+
+                    self.scenes[token] = {
+                        "scenario": scenario_path.name,
+                        "run": run_dir.name,
+                        "frames": scene_frames,
+                        "base_path": run_dir,
+                        "start_idx": i * self.config.sampling_rate,  # Original frame index
+                        "token": token,  # Store token in scene info
+                    }
+                    self.scene_tokens.append(token)
+
+        print(f"Built scene index with {len(self.scenes)} scenes")
+
+    def _extract_tar_files(self) -> None:
+        """Extract tar.gz files if needed."""
+        # Look for tar.gz files in data root
+        tar_files = list(self.config.data_root.glob("*.tar.gz"))
+
+        for tar_file in tar_files:
+            # Extract scenario name from tar filename
+            scenario_name = tar_file.stem.replace(".tar", "")
+            scenario_path = self.config.data_root / scenario_name
+
+            # Skip if already extracted
+            if scenario_path.exists():
+                continue
+
+            print(f"Extracting {tar_file.name}...")
+            with tarfile.open(tar_file, "r:gz") as tar:
+                tar.extractall(self.config.data_root)
+
+    def get_scene_tokens(self) -> List[str]:
+        """Get list of all scene tokens."""
+        return self.scene_tokens
+
+    def get_scene(self, token: str) -> "Bench2DriveScene":
+        """
+        Load a scene by token.
+
+        Args:
+            token: Scene identifier
+
+        Returns:
+            Bench2DriveScene object
+        """
+        if token not in self.scenes:
+            raise ValueError(f"Scene token {token} not found")
+
+        scene_info = self.scenes[token]
+
+        # Create and return scene object
+        from navsim.common.bench2drive_scene import Bench2DriveScene
+
+        return Bench2DriveScene(
+            scene_info=scene_info,
+            config=self.config,
+            planner=self.planner,
+            trajectory_sampling=self.trajectory_sampling,
+        )
+
+    def __len__(self) -> int:
+        """Get number of scenes."""
+        return len(self.scenes)
+
+    def __iter__(self):
+        """Iterate over scene tokens."""
+        return iter(self.scene_tokens)
+
+
+def load_bench2drive_annotation(anno_path: Path) -> Dict:
+    """
+    Load a single Bench2Drive annotation file.
+
+    Args:
+        anno_path: Path to .json.gz annotation file
+
+    Returns:
+        Dictionary containing annotation data
+    """
+    with gzip.open(anno_path, "rt") as f:
+        return json.load(f)
+
+
+def map_carla_command_to_discrete(command: int) -> int:
+    """
+    Map CARLA navigation command to discrete values.
+
+    CARLA commands (from local_planner.py):
+    - VOID = -1
+    - LEFT = 1
+    - RIGHT = 2
+    - STRAIGHT = 3
+    - LANEFOLLOW = 4
+    - CHANGELANELEFT = 5
+    - CHANGELANERIGHT = 6
+
+    NavSim discrete commands:
+    - 0 = LEFT (turns, lane changes, sharp curves)
+    - 1 = STRAIGHT
+    - 2 = RIGHT (turns, lane changes, sharp curves)
+    - 3 = UNKNOWN
+
+    Args:
+        command: CARLA command value
+
+    Returns:
+        Discrete command (0-3)
+    """
+    # Handle the conversion as found in Bench2DriveZoo
+    if command < 0:
+        command = 4
+    command -= 1
+
+    # Map to discrete values based on analysis
+    # After conversion: 0=RIGHT, 1=LEFT, 2=STRAIGHT in the model
+    # But we need NavSim format: 0=LEFT, 1=STRAIGHT, 2=RIGHT
+
+    # Remap to correct NavSim format
+    if command == 0:  # Was LEFT in CARLA, became 0 (RIGHT in model)
+        return 2  # RIGHT in NavSim
+    elif command == 1:  # Was RIGHT in CARLA, became 1 (LEFT in model)
+        return 0  # LEFT in NavSim
+    elif command == 2:  # Was STRAIGHT in CARLA, became 2
+        return 1  # STRAIGHT in NavSim
+    elif command == 3:  # Was LANEFOLLOW in CARLA
+        return 1  # STRAIGHT in NavSim
+    elif command == 4:  # Was CHANGELANELEFT
+        return 0  # LEFT in NavSim
+    elif command == 5:  # Was CHANGELANERIGHT
+        return 2  # RIGHT in NavSim
+    else:
+        return 3  # UNKNOWN
