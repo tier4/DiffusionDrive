@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-import cv2
+from PIL import Image
 import laspy
 import numpy as np
 import torch
@@ -23,14 +23,18 @@ from navsim.common.bench2drive_dataloader import (
 # Import the real dataclasses
 from navsim.common.dataclasses import Camera as CameraDataclass, Cameras, Lidar
 
+
 # Simple wrapper classes for Bench2Drive
 class Camera:
     """Simple camera wrapper for Bench2Drive that provides images tensor."""
+
     def __init__(self, images):
         self.images = images
 
+
 class LiDAR:
     """Simple LiDAR wrapper for Bench2Drive that provides point cloud tensor."""
+
     def __init__(self, lidar_pc):
         self.lidar_pc = lidar_pc
 
@@ -76,7 +80,9 @@ class Bench2DriveScene:
         self.future_frames = config.num_future_frames
 
         # Token for compatibility
-        self.token = scene_info.get('token', f"{scene_info['scenario']}_{scene_info['start_idx']:05d}")
+        self.token = scene_info.get(
+            "token", f"{scene_info['scenario']}_{scene_info['start_idx']:05d}"
+        )
 
     def get_agent_input(self, frame_idx: int = -1) -> AgentInput:
         """
@@ -136,7 +142,7 @@ class Bench2DriveScene:
         Returns Camera object with 8 views (matching NavSim format).
         """
         # Extract frame number from annotation filename (e.g., "00000.json.gz" -> "00000")
-        frame_id = self.frames[frame_idx].stem.split('.')[0]  # e.g., "00000"
+        frame_id = self.frames[frame_idx].stem.split(".")[0]  # e.g., "00000"
         camera_base = self.base_path / "camera"
 
         # Map NavSim 8-camera format to actual Bench2Drive camera names
@@ -144,12 +150,12 @@ class Bench2DriveScene:
         # NavSim expects 8 cameras, so we duplicate some views
         camera_mapping = {
             "CAM_FRONT": "rgb_front",
-            "CAM_FRONT_LEFT": "rgb_front_left", 
-            "CAM_SIDE_LEFT": "rgb_front_left",   # Duplicate front-left for missing side-left
+            "CAM_FRONT_LEFT": "rgb_front_left",
+            "CAM_SIDE_LEFT": "rgb_front_left",  # Duplicate front-left for missing side-left
             "CAM_BACK_LEFT": "rgb_back_left",
             "CAM_BACK": "rgb_back",
             "CAM_BACK_RIGHT": "rgb_back_right",
-            "CAM_SIDE_RIGHT": "rgb_front_right", # Duplicate front-right for missing side-right
+            "CAM_SIDE_RIGHT": "rgb_front_right",  # Duplicate front-right for missing side-right
             "CAM_FRONT_RIGHT": "rgb_front_right",
         }
 
@@ -168,17 +174,21 @@ class Bench2DriveScene:
             img_path = camera_base / b2d_name / f"{frame_id}.jpg"
 
             if img_path.exists():
-                # Load image
-                img = cv2.imread(str(img_path))
-                
+                # Load image using PIL (loads in RGB format)
+                img_pil = Image.open(img_path)
+
                 # Apply same JPEG compression as training to avoid train-val gap
                 # From anno.md: JPG compressed with quality 20
-                encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 20]
-                _, buffer = cv2.imencode(".jpg", img, encode_param)  # Keep in BGR for imencode
-                img = cv2.imdecode(buffer, cv2.IMREAD_COLOR)
-                
-                # Convert to RGB after all CV2 operations
-                img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                # Save to buffer with quality 20 and reload
+                from io import BytesIO
+
+                buffer = BytesIO()
+                img_pil.save(buffer, format="JPEG", quality=20)
+                buffer.seek(0)
+                img_pil = Image.open(buffer)
+
+                # Convert to numpy array (RGB format)
+                img = np.array(img_pil)
             else:
                 # Create placeholder for missing camera
                 img = np.zeros((900, 1600, 3), dtype=np.uint8)
@@ -192,7 +202,7 @@ class Bench2DriveScene:
             # Create Camera dataclass with the numpy image
             cam = CameraDataclass(image=img)
             camera_objects.append(cam)
-        
+
         # Create Cameras object with all 8 views
         # Mapping based on the order in the loop above:
         # 0: CAM_FRONT -> rgb_front
@@ -221,7 +231,7 @@ class Bench2DriveScene:
         Returns LiDAR object with point cloud.
         """
         # Extract frame number from annotation filename (e.g., "00000.json.gz" -> "00000")
-        frame_id = self.frames[frame_idx].stem.split('.')[0]
+        frame_id = self.frames[frame_idx].stem.split(".")[0]
         lidar_path = self.base_path / "lidar" / f"{frame_id}.laz"
 
         if lidar_path.exists():
@@ -280,13 +290,13 @@ class Bench2DriveScene:
         driving_command = map_carla_command_to_discrete(carla_command)
 
         # Extract position (for trajectory)
-        ego_x = anno.get('x', 0.0)
-        ego_y = anno.get('y', 0.0)
+        ego_x = anno.get("x", 0.0)
+        ego_y = anno.get("y", 0.0)
         ego_heading = -np.radians(theta)  # CW to CCW conversion
-        
+
         # Create ego pose (x, y, heading)
         ego_pose = np.array([ego_x, ego_y, ego_heading], dtype=np.float64)
-        
+
         return EgoStatus(
             ego_pose=ego_pose,
             ego_velocity=ego_velocity,
@@ -440,20 +450,20 @@ class Bench2DriveScene:
         # Create BEV map with basic road layout
         # Classes: 0=background, 1=road, 2=walkway, 3=lane, 4=static, 5=vehicle, 6=pedestrian
         bev_map = np.zeros((128, 256), dtype=np.float32)
-        
+
         # Add a simple road pattern (most areas are drivable)
         # This is a placeholder - real implementation would use semantic segmentation
         bev_map[20:108, 64:192] = 1.0  # Road area (main driving area)
-        
+
         # Add some lane markings
         bev_map[50:58, 120:136] = 3.0  # Center lane
-        
+
         # Add vehicles from agent detection
         agents, labels = self.get_agents(frame_idx)
         if isinstance(agents, torch.Tensor):
             agents = agents.numpy()
             labels = labels.numpy()
-            
+
         # Project agents to BEV
         for i, (agent, valid) in enumerate(zip(agents, labels)):
             if valid:
@@ -462,18 +472,18 @@ class Bench2DriveScene:
                 # BEV is 256x128, covering 64m x 32m
                 # Center is at (128, 64)
                 px = int(128 + x * 4)  # 4 pixels per meter
-                py = int(64 - y * 4)   # Flip y axis
-                
+                py = int(64 - y * 4)  # Flip y axis
+
                 # Simple box representation
                 half_len = int(length * 2)  # 4 pixels per meter / 2
                 half_wid = int(width * 2)
-                
+
                 # Clip to valid range
                 x1 = max(0, px - half_wid)
                 x2 = min(256, px + half_wid)
                 y1 = max(0, py - half_len)
                 y2 = min(128, py + half_len)
-                
+
                 if x2 > x1 and y2 > y1:
                     bev_map[y1:y2, x1:x2] = 5.0  # Vehicle class
 

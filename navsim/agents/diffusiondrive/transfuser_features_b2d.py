@@ -5,7 +5,7 @@ Adapts Bench2Drive data to DiffusionDrive's expected format.
 
 from typing import Dict, List, Any
 
-import cv2
+from PIL import Image
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -111,8 +111,14 @@ class Bench2DriveFeatureBuilder(AbstractFeatureBuilder):
             print("Warning: Stitched image is empty, returning black image")
             return torch.zeros((3, 256, 1024), dtype=torch.float32)
 
-        # Resize the stitched image to target size [256, 1024, 3]
-        stitched_resized = cv2.resize(stitched_image, (1024, 256))
+        # Convert to PIL Image for resizing
+        stitched_pil = Image.fromarray(stitched_image.astype(np.uint8))
+
+        # Resize the stitched image to target size [256, 1024]
+        stitched_resized = stitched_pil.resize((1024, 256), Image.Resampling.BILINEAR)
+
+        # Convert back to numpy array
+        stitched_resized = np.array(stitched_resized)
 
         # Convert to tensor and change to CHW format
         stitched = torch.from_numpy(stitched_resized).permute(2, 0, 1).float()
