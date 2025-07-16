@@ -195,6 +195,38 @@ STRAIGHT (3)  → 2         → STRAIGHT (1)
    - Configuration-based filtering
    - Cross-validation splits
 
+## High Priority TODOs
+
+### 1. **BEV Semantic Map Generation** (Priority: HIGH)
+
+**Problem**: Bench2Drive dataset has `rgb_top_down` views but **no `semantic_top_down`** views. The current implementation uses placeholder BEV semantic maps, which limits the effectiveness of the BEV semantic auxiliary task that DiffusionDrive uses for training (weight: 14.0).
+
+**Available Data**:
+- Camera semantic views: `semantic_front`, `semantic_back`, `semantic_left`, `semantic_right`
+- Top-down RGB view: `rgb_top_down`
+- Instance segmentation: `instance_*` for all camera views
+- LiDAR point clouds and bounding box annotations
+
+**Potential Solutions**:
+1. **Project perspective semantic views to BEV space** using camera intrinsics/extrinsics
+2. **Apply semantic segmentation model to top-down RGB views** to generate semantic labels
+3. **Generate basic semantic maps from LiDAR + bounding box data** (vehicles, static objects, road areas)
+4. **Use instance segmentation + object annotations** to create semantic categories
+
+**Impact**: This would significantly improve the training effectiveness since BEV semantic segmentation is a key auxiliary task in DiffusionDrive's multi-task learning approach.
+
+### 2. **Semantic Category Mapping** (Priority: MEDIUM)
+
+**Problem**: Need to verify that Bench2Drive's semantic categories map correctly to DiffusionDrive's expected BEV semantic classes. The current mapping strategy needs validation and potential updates.
+
+**Required Actions**:
+- Review `becn2drive_category_mapping_strategy.md` for current mapping
+- Validate semantic tag mappings against DiffusionDrive's expected classes
+- Ensure consistency between perspective semantic views and BEV semantic generation
+- Test category swapping issues similar to the command mapping problems
+
+**Reference**: See `becn2drive_category_mapping_strategy.md` for current category definitions (0=Background, 1=Road, 2=Walkways, 3=Lane centerlines, 4=Static objects, 5=Vehicles, 6=Pedestrians).
+
 ## Troubleshooting
 
 ### No scenes found

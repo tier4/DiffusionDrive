@@ -1,5 +1,18 @@
 # Bench2drive mapping strategy
 
+## ⚠️ IMPORTANT FINDINGS
+
+### BEV Semantic Map Limitations
+- **Bench2Drive has NO `semantic_top_down` views** - only `rgb_top_down` 
+- Current implementation uses **placeholder BEV semantic maps**
+- This limits the effectiveness of DiffusionDrive's BEV semantic auxiliary task (loss weight: 14.0)
+- Need to generate BEV semantic maps from available data (perspective semantic views, LiDAR, annotations)
+
+### Category Mapping Validation Required
+- Similar to command mapping issues, semantic category mapping needs validation
+- Ensure no "swapping" issues between Bench2Drive semantic tags and DiffusionDrive's expected classes
+- Test consistency between perspective semantic views and generated BEV semantic maps
+
 ***
 
 ## 0: Background
