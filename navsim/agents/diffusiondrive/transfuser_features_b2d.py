@@ -114,8 +114,8 @@ class Bench2DriveFeatureBuilder(AbstractFeatureBuilder):
         # Convert to PIL Image for resizing
         stitched_pil = Image.fromarray(stitched_image.astype(np.uint8))
 
-        # Resize the stitched image to target size [256, 1024]
-        stitched_resized = stitched_pil.resize((1024, 256), Image.Resampling.BILINEAR)
+        # Resize the stitched image to target size [256, 1024] using high-quality LANCZOS
+        stitched_resized = stitched_pil.resize((1024, 256), Image.Resampling.LANCZOS)
 
         # Convert back to numpy array
         stitched_resized = np.array(stitched_resized)
