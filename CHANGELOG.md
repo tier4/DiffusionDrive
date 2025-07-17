@@ -26,7 +26,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `navsim/planning/script/run_bench2drive_caching.py` - Custom caching for Bench2Drive structure
   - `navsim/planning/script/run_bench2drive_training.py` - Training script with Bench2Drive dataset
   - `navsim/planning/training/bench2drive_dataset.py` - Dataset wrapper for PyTorch compatibility
-  - `navsim/planning/training/dataset_factory.py` - Factory pattern for dataset creation
   - `scripts/train_bench2drive.sh` - Shell script for end-to-end training
 
 #### Configuration

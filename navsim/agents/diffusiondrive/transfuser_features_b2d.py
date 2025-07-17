@@ -42,10 +42,6 @@ from navsim.common.bench2drive_constants import (
     DIFFUSIONDRIVE_LIDAR_SIZE,
     LIDAR_PIXELS_PER_METER,
     LIDAR_NORMALIZATION_FACTOR,
-    BEV_SEMANTIC_HEIGHT,
-    BEV_SEMANTIC_WIDTH,
-    NUM_FUTURE_WAYPOINTS,
-    MAX_AGENTS,
 )
 
 
@@ -175,7 +171,10 @@ class Bench2DriveFeatureBuilder(AbstractFeatureBuilder):
 
         if len(current_lidar) == 0:
             # Return empty BEV if no points
-            return torch.zeros((1, DIFFUSIONDRIVE_LIDAR_SIZE, DIFFUSIONDRIVE_LIDAR_SIZE), dtype=torch.float32)
+            return torch.zeros(
+                (1, DIFFUSIONDRIVE_LIDAR_SIZE, DIFFUSIONDRIVE_LIDAR_SIZE),
+                dtype=torch.float32
+            )
 
         # Extract x, y coordinates (keep in CARLA coordinates)
         points_xy = current_lidar[:, :2]

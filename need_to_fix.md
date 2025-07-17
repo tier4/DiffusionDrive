@@ -37,7 +37,6 @@ While the CARLA-native approach (Method 3) was indeed chosen, the implementation
 
 - **File Not Found:** The documentation mentions a file, `becn2drive_category_mapping_strategy.md`, multiple times. However, this file is not present in the provided context, making it impossible to verify the claims within it.
 - **Camera Data Handling:** `bench2drive_scene.py` duplicates camera views (e.g., `rgb_front_left` is used for both `CAM_FRONT_LEFT` and `CAM_SIDE_LEFT`) to fit the 8-camera format expected by NAVSIM. This is a reasonable adaptation but highlights a data gap that could impact models sensitive to specific camera perspectives.
-- **Dataset Factory Logic:** The `dataset_factory.py` file correctly distinguishes between `navsim` and `bench2drive` dataset types, which aligns with the documentation.
 
 ## Summary of Key Conflicts
 
