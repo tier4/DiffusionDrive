@@ -33,15 +33,17 @@ One-time conversion of Bench2Drive data to NavSim format. Requires separate pipe
     * Reorganize the data structure to match NavSim's expected format.
 
 ### Pros
+
 - Clean separation of concerns
-- No model modifications needed
-- Can leverage existing NavSim training infrastructure
+* No model modifications needed
+* Can leverage existing NavSim training infrastructure
 
 ### Cons
+
 - Massive upfront data processing task
-- Requires live CARLA evaluation pipeline anyway
-- Potential data loss during conversion
-- Storage requirements doubled
+* Requires live CARLA evaluation pipeline anyway
+* Potential data loss during conversion
+* Storage requirements doubled
 
 ## Method 2: Full Model Adaptation
 
@@ -59,16 +61,18 @@ Create a unified data pipeline that can handle both CARLA and NavSim formats wit
 4. **Configuration System**
 
 ### Pros
+
 - Supports both datasets
-- Can compare with NavSim models
-- Flexible for future datasets
-- Runtime coordinate transformation
+* Can compare with NavSim models
+* Flexible for future datasets
+* Runtime coordinate transformation
 
 ### Cons
+
 - Complex implementation
-- Potential for coordinate transformation bugs
-- Higher computational overhead
-- Requires extensive testing
+* Potential for coordinate transformation bugs
+* Higher computational overhead
+* Requires extensive testing
 
 ## Method 3: CARLA-Native Pipeline ✅ **CHOSEN AND IMPLEMENTED**
 
@@ -84,15 +88,17 @@ Keep all data in CARLA coordinate system and adapt only the minimal necessary co
 4. **Minimal Model Changes**: Only adapt data loading and feature extraction
 
 ### Pros
+
 - Simplest implementation
-- No coordinate transformation errors
-- Direct CARLA integration
-- Fastest development time
+* No coordinate transformation errors
+* Direct CARLA integration
+* Fastest development time
 
 ### Cons
+
 - CARLA-specific solution
-- Cannot compare with NavSim models
-- Not suitable for mixed datasets
+* Cannot compare with NavSim models
+* Not suitable for mixed datasets
 
 ## Important Note on Coordinate Transformations
 
@@ -220,8 +226,8 @@ def convert_carla_command_to_navsim(carla_command):
 
 ## References
 
-- Original strategy document: `strategy_of_bench2drive_support.md`
-- Implementation details: `bench2drive_integration_strategy.md`
-- Final implementation: `BENCH2DRIVE_INTEGRATION.md`
-- CARLA Documentation: https://carla.readthedocs.io/
-- NavSim Documentation: https://navsim.readthedocs.io/
+* Original strategy document: `strategy_of_bench2drive_support.md`
+* Implementation details: `bench2drive_integration_strategy.md`
+* Final implementation: `BENCH2DRIVE_INTEGRATION.md`
+* CARLA Documentation: <https://carla.readthedocs.io/>
+* NavSim Documentation: <https://navsim.readthedocs.io/>

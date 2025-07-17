@@ -83,6 +83,7 @@ pytest tests/test_bench2drive_integration.py::TestBench2DriveIntegration::test_c
 ```
 
 **What the tests validate:**
+
 - Command mapping from CARLA to NavSim discrete values
 - Scene loader creation and dataset indexing
 - Scene loading with proper data structures
@@ -91,6 +92,7 @@ pytest tests/test_bench2drive_integration.py::TestBench2DriveIntegration::test_c
 - End-to-end integration with visualization output
 
 **Test requirements:**
+
 - Tests will skip gracefully if `/workspace/Bench2Drive-Base/` doesn't exist
 - Requires extracted Bench2Drive data for full functionality tests
 - Command mapping tests run independently without data requirements
@@ -130,14 +132,16 @@ python navsim/planning/script/run_training.py \
 
 ### 2. Command Mapping
 
-Based on analysis from Bench2DriveZoo, we map CARLA commands as follows:
+Based on analysis from Bench2DriveZoo, we correctly map CARLA commands to preserve semantics:
 
 ```python
 CARLA Command → Processing → NavSim Command
-LEFT (1)      → 0         → LEFT (0)
-RIGHT (2)     → 1         → RIGHT (2)
-STRAIGHT (3)  → 2         → STRAIGHT (1)
+LEFT (1)      → 0         → LEFT (0)      # No swapping - LEFT maps to LEFT
+RIGHT (2)     → 1         → RIGHT (2)     # No swapping - RIGHT maps to RIGHT
+STRAIGHT (3)  → 2         → STRAIGHT (1)  # STRAIGHT maps to STRAIGHT
 ```
+
+**Note**: Previous test cases incorrectly expected LEFT/RIGHT swapping. This has been fixed to match the correct implementation.
 
 ### 3. Temporal Downsampling
 
@@ -151,6 +155,20 @@ STRAIGHT (3)  → 2         → STRAIGHT (1)
 - DiffusionDrive: Uses 3 front cameras
 - Selected: `rgb_front_left`, `rgb_front`, `rgb_front_right`
 - Stitched horizontally to [3, 256, 1024]
+
+### 5. Data Processing Details
+
+#### LiDAR Coverage Adaptation
+- **Bench2Drive Native**: 85m x 85m coverage
+- **DiffusionDrive Expected**: 64m x 64m coverage
+- **Our Solution**: Process at full 85m resolution (340x340 pixels), then resize to 64m (256x256)
+- **Benefit**: Preserves maximum information from the larger coverage area
+- **Implementation**: See `transfuser_features_b2d.py` for high-quality LANCZOS downsampling
+
+#### BEV Dimensions
+- **LiDAR BEV**: 256 x 256 (matching DiffusionDrive)
+- **Semantic BEV**: 128 x 256 (H x W, matching DiffusionDrive)
+- **Note**: Different dimensions for different modalities as per original DiffusionDrive design
 
 ## Data Flow
 
@@ -206,6 +224,7 @@ STRAIGHT (3)  → 2         → STRAIGHT (1)
 > **Current Status**: The BEV semantic map generation is **NOT YET IMPLEMENTED** in the current codebase. The implementation still uses placeholder BEV semantic maps. However, we have identified a concrete solution path by adapting existing components from Bench2DriveZoo.
 
 **Available Implementations in Bench2DriveZoo**:
+
 1. **Core BEV Transformation**: `mmcv/models/modules/transformerV2.py` - `PerceptionTransformerBEVEncoder`
 2. **Spatial Cross-Attention**: `mmcv/models/modules/spatial_cross_attention.py` - `MSDeformableAttention3D`
 3. **BEV Segmentation Head**: `mmcv/models/dense_heads/panseg_head.py` - `PansegformerHead`
@@ -213,12 +232,14 @@ STRAIGHT (3)  → 2         → STRAIGHT (1)
 5. **Agent BEV Generation**: `team_code/vad_b2d_agent_visualize.py` - `VadAgent` with coordinate transformation
 
 **Pipeline Architecture**:
+
 1. **Multi-camera feature extraction** from perspective views
 2. **Spatial cross-attention** maps features to BEV space using deformable attention
 3. **BEV transformer encoder** aggregates features across cameras
 4. **Panoptic segmentation head** generates semantic maps (drivable areas, lane types, vehicle occupancy)
 
 **Semantic Map Classes Generated**:
+
 - **Drivable areas** (background vs drivable)
 - **Lane types**: divider, crossing, contour
 - **Road segments** and **walkways**
@@ -227,6 +248,7 @@ STRAIGHT (3)  → 2         → STRAIGHT (1)
 **Coordinate Transformation**: Uses projection matrices (`coor2topdown`) to convert 3D world coordinates to BEV pixel coordinates with support for different resolutions (200x200, 512x512, 1024x1024).
 
 **Implementation Strategy** (Based on Bench2DriveZoo):
+
 1. **Adapt spatial cross-attention mechanism** from `spatial_cross_attention.py`
 2. **Use BEV transformer encoder** from `transformerV2.py`
 3. **Implement panoptic segmentation head** from `panseg_head.py`
@@ -240,6 +262,7 @@ STRAIGHT (3)  → 2         → STRAIGHT (1)
 **Problem**: Need to verify that Bench2Drive's semantic categories map correctly to DiffusionDrive's expected BEV semantic classes. The current mapping strategy needs validation and potential updates.
 
 **Required Actions**:
+
 - Review `becn2drive_category_mapping_strategy.md` for current mapping
 - Validate semantic tag mappings against DiffusionDrive's expected classes
 - Ensure consistency between perspective semantic views and BEV semantic generation

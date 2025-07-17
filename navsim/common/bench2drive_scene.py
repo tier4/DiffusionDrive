@@ -18,6 +18,12 @@ from navsim.common.bench2drive_dataloader import (
     load_bench2drive_annotation,
     map_carla_command_to_discrete,
 )
+from navsim.common.bench2drive_constants import (
+    BEV_SEMANTIC_HEIGHT,
+    BEV_SEMANTIC_WIDTH,
+    NUM_FUTURE_WAYPOINTS,
+    MAX_AGENTS,
+)
 
 
 # Import the real dataclasses
@@ -328,7 +334,7 @@ class Bench2DriveScene:
         current_theta = -np.radians(current_anno.get("theta", 0.0))  # Convert to radians CCW
 
         # Sample future frames (every 5 frames = 0.5s at 2Hz after downsampling)
-        for i in range(1, 9):  # 8 future waypoints
+        for i in range(1, NUM_FUTURE_WAYPOINTS + 1):  # NUM_FUTURE_WAYPOINTS future waypoints
             future_idx = frame_idx + i
 
             if future_idx < len(self.frames):
@@ -382,7 +388,7 @@ class Bench2DriveScene:
         ego_theta = -np.radians(anno.get("theta", 0.0))  # Convert to radians CCW
 
         # Process vehicles from bounding_boxes
-        max_agents = 30  # From transfuser_config.py
+        max_agents = MAX_AGENTS  # Maximum number of agents to track
         agent_states = np.zeros((max_agents, 5), dtype=np.float32)
         agent_labels = np.zeros(max_agents, dtype=bool)
 
@@ -449,7 +455,8 @@ class Bench2DriveScene:
         """
         # Create BEV map with basic road layout
         # Classes: 0=background, 1=road, 2=walkway, 3=lane, 4=static, 5=vehicle, 6=pedestrian
-        bev_map = np.zeros((128, 256), dtype=np.float32)
+        # Using constants for dimensions to match DiffusionDrive expectations
+        bev_map = np.zeros((BEV_SEMANTIC_HEIGHT, BEV_SEMANTIC_WIDTH), dtype=np.float32)
 
         # Add a simple road pattern (most areas are drivable)
         # This is a placeholder - real implementation would use semantic segmentation

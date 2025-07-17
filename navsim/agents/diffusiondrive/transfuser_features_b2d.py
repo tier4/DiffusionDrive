@@ -1,6 +1,23 @@
 """
 Feature builder for Bench2Drive dataset.
 Adapts Bench2Drive data to DiffusionDrive's expected format.
+
+Key Dimension Adaptations:
+=========================
+LiDAR Processing:
+- Bench2Drive provides 85m x 85m LiDAR coverage
+- DiffusionDrive expects 64m x 64m coverage
+- Solution: Process at full 85m (340x340), then resize to 64m (256x256)
+- Benefit: Preserves maximum information while maintaining compatibility
+
+BEV Semantic Maps:
+- Dimensions: 128 x 256 (H x W) to match DiffusionDrive
+- Different from LiDAR BEV (256 x 256) as per original design
+- Currently uses placeholder implementation (see BENCH2DRIVE_INTEGRATION.md)
+
+Camera Processing:
+- Stitch 3 front cameras to 1024 x 256 (W x H)
+- Matches DiffusionDrive's expected input format
 """
 
 from typing import Dict, List, Any
@@ -15,6 +32,19 @@ from navsim.common.dataclasses import AgentInput, EgoStatus
 from navsim.planning.training.abstract_feature_target_builder import (
     AbstractFeatureBuilder,
     AbstractTargetBuilder,
+)
+
+# Import Bench2Drive constants
+from navsim.common.bench2drive_constants import (
+    BENCH2DRIVE_LIDAR_RANGE_M,
+    BENCH2DRIVE_LIDAR_SIZE,
+    DIFFUSIONDRIVE_LIDAR_SIZE,
+    LIDAR_PIXELS_PER_METER,
+    LIDAR_NORMALIZATION_FACTOR,
+    BEV_SEMANTIC_HEIGHT,
+    BEV_SEMANTIC_WIDTH,
+    NUM_FUTURE_WAYPOINTS,
+    MAX_AGENTS,
 )
 
 
@@ -128,6 +158,10 @@ class Bench2DriveFeatureBuilder(AbstractFeatureBuilder):
     def _get_lidar_feature(self, lidars: List[Any]) -> torch.Tensor:
         """
         Process LiDAR data into BEV histogram.
+        
+        Note: Bench2Drive provides 85m x 85m LiDAR coverage, but DiffusionDrive
+        expects 64m x 64m. We first process the full 85m range to preserve
+        maximum information, then resize to 64m (256x256) for compatibility.
 
         Args:
             lidars: List of LiDAR objects (we use the last/current one)
@@ -140,36 +174,43 @@ class Bench2DriveFeatureBuilder(AbstractFeatureBuilder):
 
         if len(current_lidar) == 0:
             # Return empty BEV if no points
-            return torch.zeros((1, 256, 256), dtype=torch.float32)
+            return torch.zeros((1, DIFFUSIONDRIVE_LIDAR_SIZE, DIFFUSIONDRIVE_LIDAR_SIZE), dtype=torch.float32)
 
         # Extract x, y coordinates (keep in CARLA coordinates)
-        # current_lidar is already a numpy array
         points_xy = current_lidar[:, :2]
 
-        # Define BEV parameters
-        bev_size = 256
-        bev_range = 64.0  # 64m x 64m coverage
-        pixels_per_meter = self.config.pixels_per_meter  # 4.0
+        # Step 1: Process at Bench2Drive's native 85m x 85m resolution
+        # This preserves all the LiDAR information from the original data
+        pixel_coords_full = np.zeros_like(points_xy)
+        pixel_coords_full[:, 0] = (points_xy[:, 0] + BENCH2DRIVE_LIDAR_RANGE_M / 2) * LIDAR_PIXELS_PER_METER
+        pixel_coords_full[:, 1] = (points_xy[:, 1] + BENCH2DRIVE_LIDAR_RANGE_M / 2) * LIDAR_PIXELS_PER_METER
 
-        # Convert to pixel coordinates
-        # Center is at (128, 128), ego vehicle pointing up (positive x)
-        pixel_coords = np.zeros_like(points_xy)
-        pixel_coords[:, 0] = (points_xy[:, 0] + bev_range / 2) * pixels_per_meter
-        pixel_coords[:, 1] = (points_xy[:, 1] + bev_range / 2) * pixels_per_meter
+        # Clip to valid range for full resolution
+        pixel_coords_full = np.clip(pixel_coords_full, 0, BENCH2DRIVE_LIDAR_SIZE - 1).astype(np.int32)
 
-        # Clip to valid range
-        pixel_coords = np.clip(pixel_coords, 0, bev_size - 1).astype(np.int32)
+        # Create histogram at full resolution (340x340 for 85m at 4 pixels/meter)
+        hist_full = np.zeros((BENCH2DRIVE_LIDAR_SIZE, BENCH2DRIVE_LIDAR_SIZE), dtype=np.float32)
+        
+        # Count points in each pixel using vectorized operation
+        np.add.at(hist_full, (pixel_coords_full[:, 1], pixel_coords_full[:, 0]), 1)
 
-        # Create histogram
-        hist = np.zeros((bev_size, bev_size), dtype=np.float32)
+        # Step 2: Resize to DiffusionDrive's expected 64m x 64m (256x256)
+        # Using PIL for high-quality downsampling with LANCZOS filter
+        hist_image = Image.fromarray(hist_full)
+        hist_resized = hist_image.resize(
+            (DIFFUSIONDRIVE_LIDAR_SIZE, DIFFUSIONDRIVE_LIDAR_SIZE), 
+            Image.LANCZOS
+        )
+        hist = np.array(hist_resized, dtype=np.float32)
+        
+        # Ensure non-negative values after resize (LANCZOS can produce small negative values)
+        hist = np.maximum(hist, 0.0)
 
-        # Count points in each pixel
-        for px, py in pixel_coords:
-            hist[py, px] += 1.0
-
-        # Normalize by clipping to [0, 1]
-        # Use same normalization as original code
-        hist = np.clip(hist / 10.0, 0.0, 1.0)
+        # Normalize using log scale and clip
+        # This helps handle the dynamic range of point counts
+        hist = np.log1p(hist)  # log(1 + x) to handle zeros
+        hist = hist / LIDAR_NORMALIZATION_FACTOR  # Normalize
+        hist = np.clip(hist, 0.0, 1.0)  # Clip to [0, 1]
 
         # Convert to tensor and add channel dimension
         bev_tensor = torch.from_numpy(hist).unsqueeze(0)  # [1, H, W]

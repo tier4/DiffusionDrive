@@ -17,8 +17,9 @@ This document outlines the plan for generating Bird's Eye View (BEV) semantic se
 
 2. **LiDAR BEV Visualization** (`tools/visualize.py`):
    - Projects LiDAR points to 2D plane
-   - 85m x 85m range
+   - 85m x 85m range (native Bench2Drive coverage)
    - Only for visualization, not semantic segmentation
+   - Note: DiffusionDrive integration processes this at full 85m then resizes to 64m
 
 3. **Perspective Semantic Views**:
    - `semantic_front`, `semantic_back`, `semantic_left`, `semantic_right`
@@ -44,6 +45,7 @@ This document outlines the plan for generating Bird's Eye View (BEV) semantic se
 ### Semantic Analysis Results (Bench2Drive Base Dataset)
 
 **Analysis of 13,770 semantic images from Bench2Drive base dataset:**
+
 - **Total unique pixel values found**: 27 values
 - **Actual values present**: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28]
 - **Missing values**: [16, 17] (Bus=16, Train=17)
@@ -52,6 +54,7 @@ This document outlines the plan for generating Bird's Eye View (BEV) semantic se
 ### Required Category Mapping
 
 23 CARLA semantic classes → 7 BEV classes:
+
 - 0: Background (buildings, vegetation, sky, etc.)
 - 1: Road (roads, road lines, ground)
 - 2: Walkways (sidewalks)
@@ -69,11 +72,13 @@ This document outlines the plan for generating Bird's Eye View (BEV) semantic se
 #### 1. Core BEV Transformation Pipeline
 
 **File**: `/workspace/Bench2DriveZoo/mmcv/models/modules/transformerV2.py`
+
 - `PerceptionTransformerBEVEncoder` class
 - Multi-level feature processing for BEV transformation
 - Temporal BEV features with rotation and scaling transformations
 
 **File**: `/workspace/Bench2DriveZoo/mmcv/models/modules/spatial_cross_attention.py`
+
 - `SpatialCrossAttention` and `MSDeformableAttention3D` classes
 - Perspective-to-BEV mapping using deformable attention
 - Camera-to-BEV coordinate transformation with reference points
@@ -81,6 +86,7 @@ This document outlines the plan for generating Bird's Eye View (BEV) semantic se
 #### 2. BEV Segmentation Head
 
 **File**: `/workspace/Bench2DriveZoo/mmcv/models/dense_heads/panseg_head.py`
+
 - `PansegformerHead` class for panoptic segmentation
 - Generates semantic maps including:
   - **Drivable areas** (`drivable_pred`)
@@ -93,6 +99,7 @@ This document outlines the plan for generating Bird's Eye View (BEV) semantic se
 #### 3. Agent Implementation with BEV Generation
 
 **File**: `/workspace/Bench2DriveZoo/team_code/vad_b2d_agent_visualize.py`
+
 - `VadAgent` class with actual BEV map generation
 - Coordinate transformation matrices (`coor2topdown`)
 - Methods for BEV visualization and perspective-to-BEV conversion
@@ -100,6 +107,7 @@ This document outlines the plan for generating Bird's Eye View (BEV) semantic se
 #### 4. UniAD BEV Visualization Framework
 
 **File**: `/workspace/Bench2DriveZoo/adzoo/uniad/analysis_tools/visualize/render/bev_render.py`
+
 - `BEVRender` class for BEV visualization
 - Methods for rendering predicted semantic maps, occupancy maps, and planning trajectories
 - Handles map color coding and BEV coordinate transformations

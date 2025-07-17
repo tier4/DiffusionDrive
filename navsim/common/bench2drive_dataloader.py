@@ -223,21 +223,12 @@ def map_carla_command_to_discrete(command: int) -> int:
     # CHANGELANELEFT (5) → 4
     # CHANGELANERIGHT (6) → 5
 
-    # The "swapping" issue:
-    # Bench2DriveZoo's transformation creates an intermediate representation where:
-    # - CARLA's LEFT (1) becomes 0
-    # - CARLA's RIGHT (2) becomes 1
-    # - CARLA's STRAIGHT (3) becomes 2
-    #
-    # But NavSim expects:
-    # - 0 = LEFT
-    # - 1 = STRAIGHT
-    # - 2 = RIGHT
-    #
-    # So we need to remap to match NavSim's format while preserving the original
-    # CARLA command semantics (LEFT → LEFT, RIGHT → RIGHT, STRAIGHT → STRAIGHT)
-
-    # Remap to correct NavSim format
+    # Map transformed values to NavSim format
+    # After Bench2DriveZoo transformation, we correctly map:
+    # - CARLA LEFT (originally 1, now 0) → NavSim LEFT (0)
+    # - CARLA RIGHT (originally 2, now 1) → NavSim RIGHT (2)
+    # - CARLA STRAIGHT (originally 3, now 2) → NavSim STRAIGHT (1)
+    # This ensures proper command semantics are preserved
     if command == 0:  # Was LEFT in CARLA (1 → 0 after transformation)
         return 0  # LEFT in NavSim
     elif command == 1:  # Was RIGHT in CARLA (2 → 1 after transformation)
