@@ -418,6 +418,36 @@ class Bench2DriveScene:
                         loc = obj.get("location", {})
                         obj_x = loc.get("x", 0.0)
                         obj_y = loc.get("y", 0.0)
+                        
+                        # Convert to ego-centric
+                        dx = obj_x - ego_x
+                        dy = obj_y - ego_y
+
+                        cos_theta = np.cos(-ego_theta)
+                        sin_theta = np.sin(-ego_theta)
+
+                        ego_centric_x = dx * cos_theta - dy * sin_theta
+                        ego_centric_y = dx * sin_theta + dy * cos_theta
+
+                        # Extract rotation and convert to ego-centric
+                        obj_yaw = -np.radians(obj.get("rotation", {}).get("yaw", 0.0))
+                        ego_centric_yaw = obj_yaw - ego_theta
+
+                        # Extract size (use default sizes)
+                        length = 4.0  # Default car length
+                        width = 1.8   # Default car width
+
+                        # Store agent state
+                        agent_states[agent_idx] = [
+                            ego_centric_x,
+                            ego_centric_y,
+                            ego_centric_yaw,
+                            length,
+                            width,
+                        ]
+                        agent_labels[agent_idx] = True
+                        agent_idx += 1
+                        
         elif isinstance(bboxes, dict):
             # Dict format (original expected format)
             for obj_type in ["vehicle", "pedestrian"]:
@@ -533,14 +563,75 @@ class Bench2DriveScene:
         if isinstance(labels, torch.Tensor):
             labels = labels.numpy()
         
+        # Check if cached BEV exists
+        map_bev = None
+        if hasattr(self.config, 'bev_cache_dir') and self.config.bev_cache_dir:
+            cache_dir = Path(self.config.bev_cache_dir)
+            scenario_name = self.scene_info['scenario']  # Get scenario name
+            frame_number = self.frames[frame_idx].stem.split('.')[0]
+            cache_path = cache_dir / scenario_name / f"{frame_number}.npz"
+            
+            if cache_path.exists():
+                try:
+                    cached_data = np.load(cache_path)
+                    # Use front_bev if available, otherwise use full_bev
+                    if 'front_bev' in cached_data:
+                        map_bev = cached_data['front_bev']
+                    elif 'full_bev' in cached_data:
+                        # Extract front half
+                        full_bev = cached_data['full_bev']
+                        map_bev = full_bev[:128, :]  # Front half
+                    print(f"Loaded cached BEV from {cache_path}")
+                except Exception as e:
+                    print(f"Failed to load cached BEV: {e}")
+        
+        # If no cached BEV, try to generate from HD map if available
+        if map_bev is None and hasattr(self.config, 'map_dir') and self.config.map_dir:
+            try:
+                from navsim.common.bev_map_utils import load_map_data, generate_bev_from_map
+                
+                # Extract town name from scenario
+                parts = self.scene_info['scenario'].split('_')
+                town_name = None
+                for part in parts:
+                    if part.startswith('Town'):
+                        town_name = part
+                        break
+                
+                if town_name:
+                    map_path = Path(self.config.map_dir) / f"{town_name}_HD_map.npz"
+                    if map_path.exists():
+                        # Load map data
+                        map_data = load_map_data(map_path)
+                        
+                        # Get world2ego transform
+                        anno = self._load_annotation(frame_idx)
+                        if anno and 'bounding_boxes' in anno:
+                            world2ego = np.array(anno['bounding_boxes'][0]['world2ego'])
+                            
+                            # Generate BEV from map
+                            map_bev = generate_bev_from_map(
+                                map_data=map_data,
+                                world2ego=world2ego,
+                                bev_height=BEV_SEMANTIC_HEIGHT,
+                                bev_width=BEV_SEMANTIC_WIDTH,
+                                resolution=0.25,
+                                lane_thickness=0.4,
+                                max_distance=50.0
+                            )
+                            print(f"Generated BEV from HD map for {town_name}")
+            except Exception as e:
+                print(f"Failed to generate BEV from map: {e}")
+        
         # Generate BEV semantic map using the correct dataset-level approach
         bev_map = generate_simple_bev_semantic(
-            trajectory=trajectory,
+            trajectory=trajectory if map_bev is None else None,  # Only use trajectory if no map
             agents=agents,
             agent_labels=labels,
             bev_height=BEV_SEMANTIC_HEIGHT,
             bev_width=BEV_SEMANTIC_WIDTH,
-            resolution=0.25  # 0.25 meters per pixel
+            resolution=0.25,  # 0.25 meters per pixel
+            map_bev=map_bev  # Use map-based BEV if available
         )
         
         return torch.from_numpy(bev_map).float()

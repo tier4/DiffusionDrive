@@ -61,6 +61,10 @@ class Bench2DriveFeatureBuilder(AbstractFeatureBuilder):
         super().__init__()
         self.config = config
 
+    def get_unique_name(self) -> str:
+        """Return unique name for this feature builder."""
+        return "transfuser_feature"
+
     def compute_features(self, agent_input: AgentInput) -> Dict[str, torch.Tensor]:
         """
         Build features from Bench2Drive agent input.
@@ -268,6 +272,10 @@ class Bench2DriveTargetBuilder(AbstractTargetBuilder):
         """
         super().__init__()
         self.config = config
+
+    def get_unique_name(self) -> str:
+        """Return unique name for this target builder."""
+        return "transfuser_target"
 
     def compute_targets(self, scene) -> Dict[str, torch.Tensor]:
         """

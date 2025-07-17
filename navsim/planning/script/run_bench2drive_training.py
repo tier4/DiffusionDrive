@@ -109,22 +109,67 @@ def main(cfg: DictConfig) -> None:
             cfg.cache_path is not None
         ), "cache_path must be provided when using cached data without building SceneLoader"
         
-        # For Bench2Drive, we use the standard CacheOnlyDataset which works with any cached data
+        # Get train/val scenario splits from official JSON split file
+        import json
+        import os
+        from pathlib import Path
+        
+        # Load official Bench2Drive split
+        split_file = Path(__file__).parent / "config" / "common" / "train_test_split" / "bench2drive_base_train_val_split.json"
+            
+        if split_file.exists():
+            logger.info(f"Loading official splits from: {split_file}")
+            with open(split_file, 'r') as f:
+                official_splits = json.load(f)
+            
+            # Get validation scenarios from JSON
+            val_scenarios_json = official_splits.get('val', [])
+            # Remove 'v1/' prefix to match cache directory names
+            val_scenarios = [s.replace('v1/', '') for s in val_scenarios_json]
+            
+            # Get all available cached scenarios
+            cached_scenarios = [d for d in os.listdir(cfg.cache_path) if os.path.isdir(os.path.join(cfg.cache_path, d))]
+            
+            # Training scenarios = all cached scenarios EXCEPT validation scenarios
+            train_scenarios = [s for s in cached_scenarios if s not in val_scenarios]
+            
+            logger.info(f"Using official split: {len(train_scenarios)} train, {len(val_scenarios)} val scenarios")
+        else:
+            logger.warning(f"Official split file not found at {split_file}, falling back to config")
+            # Fallback to config-based splits
+            train_scenarios = []
+            val_scenarios = []
+            
+            if hasattr(cfg.train_test_split, 'scenarios'):
+                scenarios_config = cfg.train_test_split.scenarios
+                if hasattr(scenarios_config, 'train'):
+                    train_scenarios = list(scenarios_config['train'])
+                    val_scenarios = list(scenarios_config.get('val', []))
+                else:
+                    train_scenarios = list(scenarios_config) if hasattr(scenarios_config, '__iter__') else []
+                    val_scenarios = list(scenarios_config) if hasattr(scenarios_config, '__iter__') else []
+            
+        logger.info(f"Training scenarios: {train_scenarios}")
+        logger.info(f"Validation scenarios: {val_scenarios}")
+        
+        # For Bench2Drive, we use the standard CacheOnlyDataset with scenario splits
         train_data = CacheOnlyDataset(
             cache_path=cfg.cache_path,
             feature_builders=agent.get_feature_builders(),
             target_builders=agent.get_target_builders(),
-            log_names=None,  # Use all available cached data
+            log_names=train_scenarios,
         )
+        logger.info(f"Training dataset length: {len(train_data)}")
+        logger.info(f"Training dataset tokens: {getattr(train_data, 'tokens', [])[:5]}...")  # Show first 5
         
-        # For validation, we might want to limit to certain scenarios
-        # But for now, use all cached data
         val_data = CacheOnlyDataset(
             cache_path=cfg.cache_path,
             feature_builders=agent.get_feature_builders(),
             target_builders=agent.get_target_builders(),
-            log_names=None,
+            log_names=val_scenarios,
         )
+        logger.info(f"Validation dataset length: {len(val_data)}")
+        logger.info(f"Validation dataset tokens: {getattr(val_data, 'tokens', [])[:5]}...")  # Show first 5
     else:
         logger.info("Building Bench2Drive SceneLoader")
         train_data, val_data = build_bench2drive_datasets(cfg, agent)

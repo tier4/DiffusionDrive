@@ -70,16 +70,27 @@ build_training_args() {
     local max_epochs="${3:-100}"
     local batch_size="${4:-32}"
     local num_workers="${5:-8}"
+    local dataset="${6:-navtrain}"  # New parameter for dataset type
+    
+    # Set cache path based on dataset type
+    local cache_path
+    if [[ "$dataset" == "bench2drive" ]]; then
+        cache_path="${NAVSIM_EXP_ROOT}/bench2drive_Base_cache/"
+    elif [[ "$dataset" == "bench2drive_mini" ]]; then
+        cache_path="${NAVSIM_EXP_ROOT}/bench2drive_mini_cache/"
+    else
+        cache_path="${NAVSIM_EXP_ROOT}/training_cache/"
+    fi
     
     TRAINING_ARGS=(
         "agent=$agent"
         "experiment_name=$experiment_name"
-        "train_test_split=navtrain"
+        "train_test_split=$dataset"
         "split=trainval"
         "trainer.params.max_epochs=$max_epochs"
         "dataloader.params.batch_size=$batch_size"
         "dataloader.params.num_workers=$num_workers"
-        "cache_path=${NAVSIM_EXP_ROOT}/training_cache/"
+        "cache_path=$cache_path"
         "use_cache_without_dataset=True"
         "force_cache_computation=False"
     )

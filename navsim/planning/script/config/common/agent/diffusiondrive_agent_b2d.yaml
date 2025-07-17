@@ -69,8 +69,6 @@ config:
 # Use Bench2Drive feature and target builders
 feature_builders:
   - _target_: navsim.agents.diffusiondrive.transfuser_features_b2d.Bench2DriveFeatureBuilder
-    config: ${config}
 
 target_builders:
   - _target_: navsim.agents.diffusiondrive.transfuser_features_b2d.Bench2DriveTargetBuilder
-    config: ${config}

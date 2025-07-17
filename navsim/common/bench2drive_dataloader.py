@@ -24,6 +24,8 @@ class Bench2DriveConfig:
     num_history_frames: int = 4  # Past frames
     num_future_frames: int = 26  # Future frames
     extract_tar: bool = True  # Whether to extract tar files
+    map_dir: Optional[Path] = None  # Directory containing HD map NPZ files
+    bev_cache_dir: Optional[Path] = None  # Directory containing pre-generated BEV maps
 
 
 class Bench2DriveSceneLoader:

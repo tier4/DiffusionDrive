@@ -90,6 +90,18 @@ def _agent_loss(
     cost = config.agent_class_weight * ce_cost + config.agent_box_weight * l1_cost
     cost = cost.cpu()
 
+    # Debug: Check for invalid values in cost matrix
+    if torch.isnan(cost).any() or torch.isinf(cost).any():
+        print(f"WARNING: Invalid values in cost matrix detected!")
+        print(f"Cost shape: {cost.shape}")
+        print(f"NaN values: {torch.isnan(cost).sum()}")
+        print(f"Inf values: {torch.isinf(cost).sum()}")
+        print(f"CE cost stats - min: {ce_cost.min():.4f}, max: {ce_cost.max():.4f}, mean: {ce_cost.mean():.4f}")
+        print(f"L1 cost stats - min: {l1_cost.min():.4f}, max: {l1_cost.max():.4f}, mean: {l1_cost.mean():.4f}")
+        
+        # Replace invalid values with a large finite number
+        cost = torch.nan_to_num(cost, nan=1e6, posinf=1e6, neginf=1e6)
+
     indices = [linear_sum_assignment(c) for i, c in enumerate(cost)]
     matching = [
         (torch.as_tensor(i, dtype=torch.int64), torch.as_tensor(j, dtype=torch.int64))

@@ -1,0 +1,37 @@
+# Bench2Drive Mini dataset configuration
+
+# Base configuration path
+defaults:
+  - _self_
+
+# Dataset parameters
+data_root: /workspace/Bench2Drive-mini
+bev_cache_dir: /workspace/Bench2Drive-mini-full_bev_cache
+map_dir: /workspace/Bench2Drive-Map
+
+# Available scenarios in mini dataset with train/val splits
+scenarios:
+  train: [
+    "AccidentTwoWays_Town12_Route1444_Weather0",
+    "Accident_Town03_Route156_Weather0", 
+    "ConstructionObstacle_Town05_Route68_Weather8",
+    "ControlLoss_Town11_Route401_Weather11",
+    "DynamicObjectCrossing_Town02_Route13_Weather6",
+    "HardBreakRoute_Town01_Route30_Weather3",
+    "VehicleTurningRoute_Town15_Route443_Weather1"
+  ]
+  val: [
+    "ParkedObstacle_Town10HD_Route371_Weather7",
+    "YieldToEmergencyVehicle_Town04_Route165_Weather7"
+  ]
+
+# Temporal sampling
+sampling_rate: 5  # Downsample from 10Hz to 2Hz
+num_frames: 30
+num_history_frames: 4
+num_future_frames: 26
+
+# Cache settings
+cache_path: ${oc.env:NAVSIM_EXP_ROOT}/bench2drive_mini_cache/
+use_cache_without_dataset: true
+force_cache_computation: false

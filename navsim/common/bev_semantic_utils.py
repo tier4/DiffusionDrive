@@ -100,12 +100,23 @@ def ego_to_bev_coordinates(
     # y: left (positive left)
     
     # In BEV image:
-    # row: 0 at front, increases backward
-    # col: 0 at right, increases left
+    # row: 0 at top (far ahead), increases downward (toward ego)
+    # col: 0 at left, increases rightward
     
-    # Ego origin is at (bev_height, bev_width/2) in image
-    rows = bev_height - points_ego[:, 0] / resolution
-    cols = bev_width / 2 - points_ego[:, 1] / resolution
+    # The BEV covers:
+    # - Forward: 0 to +32m (128 pixels * 0.25 m/pixel)
+    # - Lateral: -32m to +32m (256 pixels * 0.25 m/pixel)
+    # 
+    # Ego vehicle is at:
+    # - row = bev_height - 1 (bottom of image)
+    # - col = bev_width / 2 (center of image)
+    
+    # Convert coordinates
+    # For row: ego is at bottom, forward is up
+    rows = (bev_height - 1) - points_ego[:, 0] / resolution
+    
+    # For col: ego is at center, left is positive in ego coords but right in image
+    cols = bev_width / 2 + points_ego[:, 1] / resolution
     
     pixels = np.stack([rows, cols], axis=1).astype(np.int32)
     
@@ -263,7 +274,8 @@ def generate_simple_bev_semantic(
     agent_labels: Optional[np.ndarray] = None,
     bev_height: int = 128,
     bev_width: int = 256,
-    resolution: float = 0.25
+    resolution: float = 0.25,
+    map_bev: Optional[np.ndarray] = None
 ) -> np.ndarray:
     """
     Generate a simple BEV semantic map from trajectory and agents.
@@ -278,21 +290,25 @@ def generate_simple_bev_semantic(
         bev_height: Height of BEV map (default: 128)
         bev_width: Width of BEV map (default: 256)
         resolution: Meters per pixel (default: 0.25)
+        map_bev: Optional pre-generated BEV from map data
         
     Returns:
         BEV semantic map with shape (H, W) and values 0-6
     """
-    # Initialize with background
-    bev_map = np.zeros((bev_height, bev_width), dtype=np.float32)
+    # Initialize with background or map data
+    if map_bev is not None:
+        bev_map = map_bev.copy()
+    else:
+        bev_map = np.zeros((bev_height, bev_width), dtype=np.float32)
+        
+        # Add road from trajectory only if no map data
+        if trajectory is not None and len(trajectory) > 0:
+            road_mask = generate_road_mask_from_trajectory(
+                trajectory, bev_height, bev_width, resolution
+            )
+            bev_map[road_mask > 0] = 1.0  # Road class
     
-    # Add road from trajectory
-    if trajectory is not None and len(trajectory) > 0:
-        road_mask = generate_road_mask_from_trajectory(
-            trajectory, bev_height, bev_width, resolution
-        )
-        bev_map[road_mask > 0] = 1.0  # Road class
-    
-    # Add vehicles from agents
+    # Add vehicles from agents (always add dynamic objects)
     if agents is not None and agent_labels is not None:
         vehicle_mask = generate_vehicle_mask_from_agents(
             agents, agent_labels, bev_height, bev_width, resolution

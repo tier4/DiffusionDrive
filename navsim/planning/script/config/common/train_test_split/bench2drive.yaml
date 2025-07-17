@@ -3,6 +3,56 @@
 # Dataset type identifier
 dataset_type: bench2drive
 
+# Available scenarios in full dataset with train/val splits (moved to root level)
+scenarios:
+  train: [
+    "Accident",
+    "AccidentTwoWays", 
+    "BlockedIntersection",
+    "ConstructionObstacle",
+    "ConstructionObstacleTwoWays",
+    "ControlLoss",
+    "CrossingBicycleFlow",
+    "DynamicObjectCrossing",
+    "EnterActorFlow",
+    "HardBreakRoute",
+    "HazardAtSideLane",
+    "HazardAtSideLaneTwoWays",
+    "HighwayCutIn",
+    "HighwayExit",
+    "InterurbanActorFlow",
+    "InterurbanAdvancedActorFlow",
+    "InvadingTurn",
+    "LaneChange",
+    "MergerIntoSlowTraffic",
+    "MergerIntoSlowTrafficV2",
+    "NonSignalizedJunctionLeftTurn",
+    "NonSignalizedJunctionLeftTurnEnterFlow",
+    "NonSignalizedJunctionRightTurn",
+    "OppositeVehicleRunningRedLight",
+    "OppositeVehicleTakingPriority",
+    "ParkingCutIn",
+    "ParkingExit",
+    "PedestrianCrossing",
+    "SignalizedJunctionLeftTurn",
+    "SignalizedJunctionRightTurn",
+    "StaticCutIn",
+    "VehicleOpensDoorTwoWays",
+    "YieldToEmergencyVehicle"
+  ]
+  val: [
+    "ConstructionObstacle",
+    "CrossingBicycleFlow",
+    "HardBreakRoute",
+    "HighwayCutIn",
+    "InterurbanActorFlow",
+    "LaneChange",
+    "MergerIntoSlowTrafficV2",
+    "NonSignalizedJunctionLeftTurnEnterFlow",
+    "OppositeVehicleRunningRedLight",
+    "ParkingCutIn"
+  ]
+
 # Scene filter for compatibility with NAVSIM structure
 scene_filter:
   _target_: navsim.common.dataclasses.SceneFilter
