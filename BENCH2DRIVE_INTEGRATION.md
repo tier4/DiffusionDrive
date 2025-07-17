@@ -201,7 +201,9 @@ STRAIGHT (3)  → 2         → STRAIGHT (1)
 
 **Problem**: Bench2Drive dataset has `rgb_top_down` views but **no `semantic_top_down`** views. The current implementation uses placeholder BEV semantic maps, which limits the effectiveness of the BEV semantic auxiliary task that DiffusionDrive uses for training (weight: 14.0).
 
-**✅ SOLUTION FOUND**: Extensive BEV segmentation implementations exist in **Bench2DriveZoo** repository that can be adapted for DiffusionDrive!
+**✅ IMPLEMENTATION PLAN FOUND**: Extensive BEV segmentation implementations exist in **Bench2DriveZoo** repository that can be adapted for DiffusionDrive!
+
+> **Current Status**: The BEV semantic map generation is **NOT YET IMPLEMENTED** in the current codebase. The implementation still uses placeholder BEV semantic maps. However, we have identified a concrete solution path by adapting existing components from Bench2DriveZoo.
 
 **Available Implementations in Bench2DriveZoo**:
 1. **Core BEV Transformation**: `mmcv/models/modules/transformerV2.py` - `PerceptionTransformerBEVEncoder`

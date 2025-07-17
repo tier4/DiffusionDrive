@@ -27,7 +27,7 @@ According to the official NAVSIM documentation, driving commands are discrete va
 - **Type**: Single integer value (0, 1, 2, or 3)
 - **Location in code**: `navsim/common/dataclasses.py`, line 138
 - **Access path**: `agent_input.ego_statuses[-1].driving_command`
-- **Note**: While stored as an integer in the data, it may be converted to one-hot encoding for model input
+- **Important**: While stored as an integer in the data structure, **the model expects one-hot encoded vectors**. The DiffusionDrive model's status encoding layer (`transfuser_model_v2.py`) uses `nn.Linear(config.num_driving_commands + 2 + 2, config.tf_d_model)` which requires one-hot encoded input. See `adaptation_guide_more_commands.md` for conversion details.
 
 ### 3. Usage in Model
 

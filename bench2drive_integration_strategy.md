@@ -1,5 +1,7 @@
 # Bench2Drive Integration Strategy
 
+> **🚨 IMPORTANT**: This document contains implementation strategies for reference only. **Method 3 (CARLA-Native Pipeline) was chosen and implemented** as documented in `BENCH2DRIVE_INTEGRATION.md`. The detailed code examples for Method 2 below are preserved for reference but were NOT used in the final implementation.
+
 ## Overview
 
 This document outlines implementation strategies for integrating Bench2Drive with DiffusionDrive. We present three methods based on different use cases and requirements.
