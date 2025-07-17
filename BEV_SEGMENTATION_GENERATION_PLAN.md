@@ -137,9 +137,13 @@ class BEVSemanticGenerator:
     """
     Generate BEV semantic maps from multi-camera perspective views
     Adapted from Bench2DriveZoo implementations
+    
+    Note: Generates maps in native NavSim format (128×256) which matches
+    the frontal RGB camera coverage area - this is NOT a DiffusionDrive
+    modification but the original NavSim BEV semantic format.
     """
     
-    def __init__(self, camera_configs, bev_size=(256, 128)):
+    def __init__(self, camera_configs, bev_size=(128, 256)):  # Native NavSim format
         self.spatial_attention = MSDeformableAttention3D(...)
         self.bev_encoder = PerceptionTransformerBEVEncoder(...)
         self.segmentation_head = PansegformerHead(...)
@@ -157,38 +161,7 @@ class BEVSemanticGenerator:
         pass
 ```
 
-#### Phase 3: Category Mapping Adaptation
-
-Map Bench2DriveZoo's semantic classes to DiffusionDrive's 7 BEV classes:
-
-```python
-BENCH2DRIVE_TO_DIFFUSION_MAPPING = {
-    # Drivable areas → Road (1)
-    'drivable_pred': 1,
-    
-    # Lane types → Lane centerlines (3)
-    'lane_divider': 3,
-    'lane_crossing': 3,
-    'lane_contour': 3,
-    
-    # Vehicle occupancy → Vehicles (5)
-    'vehicle_occupancy': 5,
-    
-    # Background → Background (0)
-    'background': 0,
-    
-    # Static objects → Static objects (4)
-    'static_objects': 4,
-    
-    # Pedestrians → Pedestrians (6)
-    'pedestrians': 6,
-    
-    # Walkways → Walkways (2)
-    'walkways': 2,
-}
-```
-
-### Phase 4: Configuration and Integration
+### Phase 3: Configuration and Integration
 
 Configure the BEV generation pipeline for DiffusionDrive:
 
@@ -197,13 +170,13 @@ Configure the BEV generation pipeline for DiffusionDrive:
 @dataclass
 class BEVSemanticConfig:
     enable_bev_generation: bool = True
-    bev_size: Tuple[int, int] = (256, 128)
-    bev_resolution: float = 0.5  # meters per pixel
+    bev_size: Tuple[int, int] = (128, 256)  # Native NavSim format (H, W)
+    bev_resolution: float = 0.25  # meters per pixel (NavSim standard)
     num_bev_classes: int = 7
     use_temporal_features: bool = True
     attention_levels: int = 4
     
-    # Camera configuration for BEV
+    # Camera configuration for BEV (frontal coverage matches BEV format)
     camera_names: List[str] = field(default_factory=lambda: [
         'rgb_front_left', 'rgb_front', 'rgb_front_right'
     ])
@@ -216,7 +189,7 @@ class BEVSemanticConfig:
     validate_bev_output: bool = True
 ```
 
-### Phase 5: Updated Category Mapping
+### Phase 4: Updated Category Mapping
 
 Based on semantic analysis from Bench2Drive base dataset (27 unique values found):
 
@@ -268,7 +241,7 @@ BENCH2DRIVE_TO_BEV_MAPPING = {
 }
 ```
 
-### Phase 6: Integration with DiffusionDrive Pipeline
+### Phase 5: Integration with DiffusionDrive Pipeline
 
 1. **Update Feature Builder** (`transfuser_features_b2d.py`):
    - Replace placeholder BEV semantic map generation

@@ -451,11 +451,16 @@ class Bench2DriveScene:
         Get BEV semantic segmentation map.
 
         Returns:
-            BEV map tensor [H, W] with semantic labels
+            BEV map tensor [H, W] with semantic labels in native NavSim format
+            
+        Note: Returns 128×256 format which is the original NavSim BEV semantic format.
+        This rectangular shape matches the frontal RGB camera coverage area and 
+        optimizes for forward-driving scenarios where lateral awareness is more 
+        critical than forward/backward range.
         """
         # Create BEV map with basic road layout
         # Classes: 0=background, 1=road, 2=walkway, 3=lane, 4=static, 5=vehicle, 6=pedestrian
-        # Using constants for dimensions to match DiffusionDrive expectations
+        # Using native NavSim dimensions (128×256)
         bev_map = np.zeros((BEV_SEMANTIC_HEIGHT, BEV_SEMANTIC_WIDTH), dtype=np.float32)
 
         # Add a simple road pattern (most areas are drivable)

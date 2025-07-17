@@ -34,13 +34,15 @@ One-time conversion of Bench2Drive data to NavSim format. Requires separate pipe
 
 ### Pros
 
-- Clean separation of concerns
+* Clean separation of concerns
+
 * No model modifications needed
 * Can leverage existing NavSim training infrastructure
 
 ### Cons
 
-- Massive upfront data processing task
+* Massive upfront data processing task
+
 * Requires live CARLA evaluation pipeline anyway
 * Potential data loss during conversion
 * Storage requirements doubled
@@ -62,14 +64,16 @@ Create a unified data pipeline that can handle both CARLA and NavSim formats wit
 
 ### Pros
 
-- Supports both datasets
+* Supports both datasets
+
 * Can compare with NavSim models
 * Flexible for future datasets
 * Runtime coordinate transformation
 
 ### Cons
 
-- Complex implementation
+* Complex implementation
+
 * Potential for coordinate transformation bugs
 * Higher computational overhead
 * Requires extensive testing
@@ -89,14 +93,16 @@ Keep all data in CARLA coordinate system and adapt only the minimal necessary co
 
 ### Pros
 
-- Simplest implementation
+* Simplest implementation
+
 * No coordinate transformation errors
 * Direct CARLA integration
 * Fastest development time
 
 ### Cons
 
-- CARLA-specific solution
+* CARLA-specific solution
+
 * Cannot compare with NavSim models
 * Not suitable for mixed datasets
 
@@ -226,8 +232,4 @@ def convert_carla_command_to_navsim(carla_command):
 
 ## References
 
-* Original strategy document: `strategy_of_bench2drive_support.md`
-* Implementation details: `bench2drive_integration_strategy.md`
 * Final implementation: `BENCH2DRIVE_INTEGRATION.md`
-* CARLA Documentation: <https://carla.readthedocs.io/>
-* NavSim Documentation: <https://navsim.readthedocs.io/>

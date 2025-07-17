@@ -11,8 +11,9 @@ LiDAR Processing:
 - Benefit: Preserves maximum information while maintaining compatibility
 
 BEV Semantic Maps:
-- Dimensions: 128 x 256 (H x W) to match DiffusionDrive
-- Different from LiDAR BEV (256 x 256) as per original design
+- Dimensions: 128 x 256 (H x W) - native NavSim format
+- Rectangular shape matches frontal RGB camera coverage area
+- Different from LiDAR BEV (256 x 256) by design for driving-focused scenarios
 - Currently uses placeholder implementation (see BENCH2DRIVE_INTEGRATION.md)
 
 Camera Processing:

@@ -263,20 +263,9 @@ def convert_command_to_onehot(command_id: int, num_commands: int) -> np.ndarray:
     return onehot
 ```
 
-#### 4. Example: 8-Command System
+#### 4. Example: Carla Command System
 
-```python
-EXTENDED_COMMAND_MAPPING = {
-    0: "HARD_LEFT",      # Sharp left turn
-    1: "LEFT",           # Normal left turn/lane change
-    2: "SLIGHT_LEFT",    # Slight left adjustment
-    3: "STRAIGHT",       # Continue straight
-    4: "SLIGHT_RIGHT",   # Slight right adjustment
-    5: "RIGHT",          # Normal right turn/lane change
-    6: "HARD_RIGHT",     # Sharp right turn
-    7: "UNKNOWN"         # Unknown/undefined
-}
-```
+Carla command system
 
 ### Alternative: Continuous Commands
 
@@ -373,10 +362,11 @@ bev_semantic = process_semantic_to_bev(semantic_image, CARLA_TO_BEV_MAPPING)
 4. **Command Interpretation**: Commands are route-based, not reactive (unlike nuScenes)
 5. **Missing Categories**: Bus and Train categories are missing from Bench2Drive but can be grouped with other vehicles
 6. **LiDAR Coverage**: Bench2Drive provides 85m x 85m coverage, which is processed at full resolution then resized to DiffusionDrive's expected 64m x 64m
-7. **Dimension Standards**: 
-   - LiDAR BEV: 256 x 256 (single channel)
-   - Semantic BEV: 128 x 256 (H x W)
-   - Camera: 1024 x 256 (W x H, 3 stitched cameras)
+7. **Dimension Standards**:
+   - LiDAR BEV: 256 x 256 (single channel, square coverage)
+   - Semantic BEV: 128 x 256 (H x W, **native NavSim format matching frontal RGB camera coverage**)
+   - Camera: 1024 x 256 (W x H, 3 stitched frontal cameras)
+   - **Key Insight**: The 128×256 BEV semantic format is the original NavSim design, not a DiffusionDrive modification. This rectangular shape optimizes for forward-driving scenarios where lateral awareness is more critical than forward/backward range.
 
 ## References
 

@@ -166,9 +166,9 @@ STRAIGHT (3)  → 2         → STRAIGHT (1)  # STRAIGHT maps to STRAIGHT
 - **Implementation**: See `transfuser_features_b2d.py` for high-quality LANCZOS downsampling
 
 #### BEV Dimensions
-- **LiDAR BEV**: 256 x 256 (matching DiffusionDrive)
-- **Semantic BEV**: 128 x 256 (H x W, matching DiffusionDrive)
-- **Note**: Different dimensions for different modalities as per original DiffusionDrive design
+- **LiDAR BEV**: 256 x 256 (square coverage, matching NavSim)
+- **Semantic BEV**: 128 x 256 (H x W, **native NavSim format**)
+- **Key Insight**: The 128×256 rectangular format is the **original NavSim BEV semantic format**, not a DiffusionDrive modification. This rectangular shape is designed to match the frontal RGB camera coverage area, optimizing for forward-driving scenarios where lateral awareness is more critical than forward/backward range.
 
 ## Data Flow
 
