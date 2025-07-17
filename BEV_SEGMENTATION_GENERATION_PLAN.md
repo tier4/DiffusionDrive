@@ -29,11 +29,36 @@ This document outlines the plan for generating Bird's Eye View (BEV) semantic se
    - Road geometry and lane information
    - Could supplement BEV generation
 
-### Missing Components
+### Critical Missing Components
 
-- No `semantic_top_down` camera output
-- No BEV semantic segmentation generation pipeline
-- No perspective-to-BEV projection code
+- **NO semantic top-down camera output** - only RGB top-down exists
+- **NO BEV semantic segmentation generation pipeline**
+- **NO perspective-to-BEV projection code**
+
+### DiffusionDrive Integration Issue
+
+- DiffusionDrive expects BEV semantic maps (loss weight: 14.0)
+- Current implementation returns **placeholder zeros** in `bench2drive_scene.py:get_bev_semantic_map()`
+- This severely limits training effectiveness
+
+### Semantic Analysis Results (Bench2Drive Base Dataset)
+
+**Analysis of 13,770 semantic images from Bench2Drive base dataset:**
+- **Total unique pixel values found**: 27 values
+- **Actual values present**: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28]
+- **Missing values**: [16, 17] (Bus=16, Train=17)
+- **Key finding**: Not all semantic categories defined in CARLA are present in the base dataset
+
+### Required Category Mapping
+
+23 CARLA semantic classes → 7 BEV classes:
+- 0: Background (buildings, vegetation, sky, etc.)
+- 1: Road (roads, road lines, ground)
+- 2: Walkways (sidewalks)
+- 3: Lane centerlines
+- 4: Static objects (signs, traffic lights, barriers)
+- 5: Vehicles (cars, trucks, buses, motorcycles)
+- 6: Pedestrians (walkers, riders)
 
 ## ✅ SOLUTION FOUND: Bench2DriveZoo Implementation
 
@@ -312,13 +337,24 @@ Bench2Drive/
 3. Generation time < 100ms per frame
 4. Successful integration with DiffusionDrive (non-zero BEV loss)
 
-## Next Steps
+## Next Steps (Updated)
 
-1. Choose implementation approach based on requirements
-2. Implement core BEV generation function
-3. Validate with sample data
-4. Integrate into data pipeline
-5. Test with DiffusionDrive model
+1. **Study Bench2DriveZoo implementation details** - understand spatial cross-attention mechanism
+2. **Adapt core components for DiffusionDrive** - create `BEVSemanticGenerator` module
+3. **Implement semantic category mapping** - handle 27 unique pixel values to 7 BEV classes
+4. **Validate with Bench2Drive base dataset** - test on 13,770 semantic images
+5. **Integrate with DiffusionDrive training** - replace placeholder BEV maps
+6. **Enable BEV auxiliary loss** - improve training effectiveness with proper semantic maps
+
+## Key Technical Insight
+
+**Coordinate Transformation**: Bench2DriveZoo uses projection matrices (`coor2topdown`) to convert 3D world coordinates to BEV pixel coordinates, supporting multiple resolutions (200x200, 512x512, 1024x1024). This solves the perspective-to-BEV projection challenge that was previously a major implementation barrier.
+
+## Expected Impact
+
+- Enable proper BEV semantic auxiliary loss in DiffusionDrive
+- Improve autonomous driving model training on Bench2Drive
+- Provide foundation for future BEV-based research
 
 ## References
 
