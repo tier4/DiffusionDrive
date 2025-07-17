@@ -392,26 +392,50 @@ class Bench2DriveScene:
         agent_states = np.zeros((max_agents, 5), dtype=np.float32)
         agent_labels = np.zeros(max_agents, dtype=bool)
 
-        bboxes = anno.get("bounding_boxes", {})
+        bboxes = anno.get("bounding_boxes", [])
         agent_idx = 0
 
-        # Process vehicles (excluding ego)
-        for obj_type in ["vehicle", "pedestrian"]:
-            if obj_type in bboxes:
-                for obj in bboxes[obj_type]:
-                    if agent_idx >= max_agents:
-                        break
+        # Handle both list and dict formats
+        if isinstance(bboxes, list):
+            # List format (Bench2Drive mini dataset)
+            for obj in bboxes:
+                if agent_idx >= max_agents:
+                    break
+                    
+                # Get object class
+                obj_class = obj.get("class", "")
+                
+                # Skip ego vehicle
+                if obj_class == "ego_vehicle":
+                    continue
+                    
+                # Process vehicles and pedestrians
+                if obj_class in ["vehicle", "pedestrian", "car", "truck", "motorcycle"]:
+                    # Extract position
+                    if isinstance(obj.get("location"), list):
+                        obj_x, obj_y, obj_z = obj["location"]
+                    else:
+                        loc = obj.get("location", {})
+                        obj_x = loc.get("x", 0.0)
+                        obj_y = loc.get("y", 0.0)
+        elif isinstance(bboxes, dict):
+            # Dict format (original expected format)
+            for obj_type in ["vehicle", "pedestrian"]:
+                if obj_type in bboxes:
+                    for obj in bboxes[obj_type]:
+                        if agent_idx >= max_agents:
+                            break
 
-                    # Skip static vehicles or ego
-                    if obj.get("state") == "static" or obj.get("id") == bboxes.get(
-                        "ego_vehicle", {}
-                    ).get("id"):
-                        continue
+                        # Skip static vehicles or ego
+                        if obj.get("state") == "static" or obj.get("id") == bboxes.get(
+                            "ego_vehicle", {}
+                        ).get("id"):
+                            continue
 
-                    # Extract position (keep in CARLA coordinates)
-                    loc = obj.get("location", {})
-                    obj_x = loc.get("x", 0.0)
-                    obj_y = loc.get("y", 0.0)
+                        # Extract position (keep in CARLA coordinates)
+                        loc = obj.get("location", {})
+                        obj_x = loc.get("x", 0.0)
+                        obj_y = loc.get("y", 0.0)
 
                     # Convert to ego-centric
                     dx = obj_x - ego_x
@@ -458,47 +482,67 @@ class Bench2DriveScene:
         optimizes for forward-driving scenarios where lateral awareness is more 
         critical than forward/backward range.
         """
-        # Create BEV map with basic road layout
-        # Classes: 0=background, 1=road, 2=walkway, 3=lane, 4=static, 5=vehicle, 6=pedestrian
-        # Using native NavSim dimensions (128×256)
-        bev_map = np.zeros((BEV_SEMANTIC_HEIGHT, BEV_SEMANTIC_WIDTH), dtype=np.float32)
-
-        # Add a simple road pattern (most areas are drivable)
-        # This is a placeholder - real implementation would use semantic segmentation
-        bev_map[20:108, 64:192] = 1.0  # Road area (main driving area)
-
-        # Add some lane markings
-        bev_map[50:58, 120:136] = 3.0  # Center lane
-
-        # Add vehicles from agent detection
+        from navsim.common.bev_semantic_utils import generate_simple_bev_semantic
+        
+        # Get trajectory for road generation
+        trajectory = None
+        if hasattr(self, '_future_trajectory_cache') and frame_idx in self._future_trajectory_cache:
+            # Use cached trajectory if available
+            traj_data = self._future_trajectory_cache[frame_idx]
+            trajectory = traj_data  # Already in ego-centric coordinates
+        else:
+            # Try to generate trajectory from future frames
+            try:
+                future_positions = []
+                for i in range(min(8, len(self.frames) - frame_idx - 1)):
+                    future_frame = self._load_annotation(frame_idx + i + 1)
+                    if future_frame is not None:
+                        ego_x = future_frame.get('x', 0.0)
+                        ego_y = future_frame.get('y', 0.0)
+                        ego_theta = future_frame.get('theta', 0.0)
+                        
+                        # Convert to ego-centric coordinates
+                        current_frame = self._load_annotation(frame_idx)
+                        if current_frame is not None:
+                            curr_x = current_frame.get('x', 0.0)
+                            curr_y = current_frame.get('y', 0.0)
+                            curr_theta = current_frame.get('theta', 0.0)
+                            
+                            # Transform to ego-centric
+                            dx = ego_x - curr_x
+                            dy = ego_y - curr_y
+                            cos_theta = np.cos(curr_theta)
+                            sin_theta = np.sin(curr_theta)
+                            
+                            ego_centric_x = dx * cos_theta + dy * sin_theta
+                            ego_centric_y = -dx * sin_theta + dy * cos_theta
+                            ego_centric_heading = ego_theta - curr_theta
+                            
+                            future_positions.append([ego_centric_x, ego_centric_y, ego_centric_heading])
+                
+                if future_positions:
+                    trajectory = np.array(future_positions)
+            except:
+                # If trajectory generation fails, use None
+                trajectory = None
+        
+        # Get agents for vehicle generation
         agents, labels = self.get_agents(frame_idx)
         if isinstance(agents, torch.Tensor):
             agents = agents.numpy()
+        if isinstance(labels, torch.Tensor):
             labels = labels.numpy()
-
-        # Project agents to BEV
-        for i, (agent, valid) in enumerate(zip(agents, labels)):
-            if valid:
-                x, y, heading, length, width = agent
-                # Convert to BEV pixel coordinates
-                # BEV is 256x128, covering 64m x 32m
-                # Center is at (128, 64)
-                px = int(128 + x * 4)  # 4 pixels per meter
-                py = int(64 - y * 4)  # Flip y axis
-
-                # Simple box representation
-                half_len = int(length * 2)  # 4 pixels per meter / 2
-                half_wid = int(width * 2)
-
-                # Clip to valid range
-                x1 = max(0, px - half_wid)
-                x2 = min(256, px + half_wid)
-                y1 = max(0, py - half_len)
-                y2 = min(128, py + half_len)
-
-                if x2 > x1 and y2 > y1:
-                    bev_map[y1:y2, x1:x2] = 5.0  # Vehicle class
-
+        
+        # Generate BEV semantic map using the correct dataset-level approach
+        bev_map = generate_simple_bev_semantic(
+            trajectory=trajectory,
+            agents=agents,
+            agent_labels=labels,
+            bev_height=BEV_SEMANTIC_HEIGHT,
+            bev_width=BEV_SEMANTIC_WIDTH,
+            resolution=0.25  # 0.25 meters per pixel
+        )
+        
         return torch.from_numpy(bev_map).float()
 
     def __len__(self) -> int:

@@ -1,5 +1,23 @@
 # BEV Segmentation Generation Plan for Bench2Drive
 
+## ⚠️ CRITICAL UPDATE (2025-07-17) ⚠️
+
+**This document contains an INCORRECT approach. The correct implementation is described in BEV_SEGMENTATION_ANALYSIS.md.**
+
+### Key Misunderstandings in This Document:
+1. **WRONG**: This document suggests modifying the DiffusionDrive model by adding neural network components
+2. **CORRECT**: BEV generation should happen at the dataset level using vectorized map data
+3. **WRONG**: This document proposes perspective-to-BEV projection using spatial attention
+4. **CORRECT**: UniAD rasterizes CARLA town vectorized maps during data loading
+5. **WRONG**: This document suggests creating new model modules like BEVSemanticGenerator
+6. **CORRECT**: All BEV generation logic belongs in the dataset class (B2D_E2E_Dataset)
+
+**DO NOT FOLLOW THE IMPLEMENTATION STRATEGY IN THIS DOCUMENT**
+
+See BEV_SEGMENTATION_ANALYSIS.md for the correct approach.
+
+---
+
 ## Overview
 
 This document outlines the plan for generating Bird's Eye View (BEV) semantic segmentation maps for the Bench2Drive dataset, which are currently missing but required for DiffusionDrive integration.
@@ -63,9 +81,11 @@ This document outlines the plan for generating Bird's Eye View (BEV) semantic se
 - 5: Vehicles (cars, trucks, buses, motorcycles)
 - 6: Pedestrians (walkers, riders)
 
-## ✅ SOLUTION FOUND: Bench2DriveZoo Implementation
+## ❌ INCORRECT SOLUTION: Bench2DriveZoo Implementation
 
-**Discovery**: Extensive BEV segmentation implementations already exist in Bench2DriveZoo repository that can be directly adapted for DiffusionDrive!
+**⚠️ WARNING**: This section misunderstands how Bench2DriveZoo works. The components below are NOT for generating BEV maps - they are model components that USE already-generated BEV maps.
+
+**CORRECT UNDERSTANDING**: Bench2DriveZoo generates BEV maps in the dataset class by rasterizing vectorized map data, NOT through neural network components.
 
 ### Key Implementation Components in Bench2DriveZoo
 
