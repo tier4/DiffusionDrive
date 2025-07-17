@@ -201,19 +201,37 @@ STRAIGHT (3)  → 2         → STRAIGHT (1)
 
 **Problem**: Bench2Drive dataset has `rgb_top_down` views but **no `semantic_top_down`** views. The current implementation uses placeholder BEV semantic maps, which limits the effectiveness of the BEV semantic auxiliary task that DiffusionDrive uses for training (weight: 14.0).
 
-**Available Data**:
-- Camera semantic views: `semantic_front`, `semantic_back`, `semantic_left`, `semantic_right`
-- Top-down RGB view: `rgb_top_down`
-- Instance segmentation: `instance_*` for all camera views
-- LiDAR point clouds and bounding box annotations
+**✅ SOLUTION FOUND**: Extensive BEV segmentation implementations exist in **Bench2DriveZoo** repository that can be adapted for DiffusionDrive!
 
-**Potential Solutions**:
-1. **Project perspective semantic views to BEV space** using camera intrinsics/extrinsics
-2. **Apply semantic segmentation model to top-down RGB views** to generate semantic labels
-3. **Generate basic semantic maps from LiDAR + bounding box data** (vehicles, static objects, road areas)
-4. **Use instance segmentation + object annotations** to create semantic categories
+**Available Implementations in Bench2DriveZoo**:
+1. **Core BEV Transformation**: `mmcv/models/modules/transformerV2.py` - `PerceptionTransformerBEVEncoder`
+2. **Spatial Cross-Attention**: `mmcv/models/modules/spatial_cross_attention.py` - `MSDeformableAttention3D`
+3. **BEV Segmentation Head**: `mmcv/models/dense_heads/panseg_head.py` - `PansegformerHead`
+4. **UniAD BEV Visualization**: `adzoo/uniad/analysis_tools/visualize/render/bev_render.py` - `BEVRender`
+5. **Agent BEV Generation**: `team_code/vad_b2d_agent_visualize.py` - `VadAgent` with coordinate transformation
 
-**Impact**: This would significantly improve the training effectiveness since BEV semantic segmentation is a key auxiliary task in DiffusionDrive's multi-task learning approach.
+**Pipeline Architecture**:
+1. **Multi-camera feature extraction** from perspective views
+2. **Spatial cross-attention** maps features to BEV space using deformable attention
+3. **BEV transformer encoder** aggregates features across cameras
+4. **Panoptic segmentation head** generates semantic maps (drivable areas, lane types, vehicle occupancy)
+
+**Semantic Map Classes Generated**:
+- **Drivable areas** (background vs drivable)
+- **Lane types**: divider, crossing, contour
+- **Road segments** and **walkways**
+- **Vehicle occupancy** maps
+
+**Coordinate Transformation**: Uses projection matrices (`coor2topdown`) to convert 3D world coordinates to BEV pixel coordinates with support for different resolutions (200x200, 512x512, 1024x1024).
+
+**Implementation Strategy** (Based on Bench2DriveZoo):
+1. **Adapt spatial cross-attention mechanism** from `spatial_cross_attention.py`
+2. **Use BEV transformer encoder** from `transformerV2.py`
+3. **Implement panoptic segmentation head** from `panseg_head.py`
+4. **Apply coordinate transformation utilities** from agent implementations
+5. **Integrate with existing DiffusionDrive feature pipeline**
+
+**Impact**: This provides a complete pipeline for converting multi-camera perspective views to BEV semantic segmentation maps, directly solving the missing BEV semantic map issue!
 
 ### 2. **Semantic Category Mapping** (Priority: MEDIUM)
 
