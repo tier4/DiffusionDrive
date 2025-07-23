@@ -1,0 +1,30 @@
+# Extended DiffusionDrive agent configuration with normalization support
+defaults:
+  - diffusiondrive_agent  # Inherit from base config
+
+_target_: navsim.agents.diffusiondrive.extended_transfuser_agent.ExtendedTransfuserAgent
+_convert_: 'all'
+
+config:
+  _target_: navsim.agents.diffusiondrive.extended_transfuser_config.ExtendedTransfuserConfig
+  _convert_: 'all'
+  
+  # Inherit all base config values
+  trajectory_sampling:
+    _target_: nuplan.planning.simulation.trajectory.trajectory_sampling.TrajectorySampling
+    _convert_: 'all'
+    time_horizon: 4.0
+    interval_length: 0.5
+
+  latent: False
+  
+  # Extended configuration
+  dataset_type: "navsim"  # Override with "bench2drive" when training on Bench2Drive
+  
+  # Paths can be overridden via command line
+  bkb_path: "/workspace/DiffusionDrive/download/pytorch_model.bin"
+  plan_anchor_path: "/workspace/DiffusionDrive/download/kmeans_navsim_traj_20.npy"
+
+# Keep other parameters same as base
+checkpoint_path: null
+lr: 6e-4

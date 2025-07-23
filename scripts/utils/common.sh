@@ -101,6 +101,23 @@ build_training_args() {
         "use_cache_without_dataset=True"
         "force_cache_computation=False"
     )
+    
+    # Add dataset-specific configuration for extended agent
+    if [[ "$agent" == "diffusiondrive_agent_extended" ]]; then
+        if [[ "$dataset" == "bench2drive"* ]]; then
+            TRAINING_ARGS+=(
+                "agent.config.dataset_type=bench2drive"
+                "agent.config.plan_anchor_path=${NAVSIM_DEVKIT_ROOT}/download/kmeans_bench2drive_traj_20.npy"
+            )
+        else
+            TRAINING_ARGS+=(
+                "agent.config.dataset_type=navsim"
+                "agent.config.plan_anchor_path=${NAVSIM_DEVKIT_ROOT}/download/kmeans_navsim_traj_20.npy"
+            )
+        fi
+        # Add backbone path
+        TRAINING_ARGS+=("agent.config.bkb_path=${NAVSIM_DEVKIT_ROOT}/download/pytorch_model.bin")
+    fi
 
     export TRAINING_ARGS
 }

@@ -130,3 +130,7 @@ download/openscene-v1.1/
 .local/
 *.local
 *.personal
+
+# Generated analysis outputs
+download/*_analysis.png
+download/*_metadata.json

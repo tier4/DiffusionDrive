@@ -2,6 +2,15 @@
 
 This guide provides complete instructions for training DiffusionDrive from scratch using the Bench2Drive dataset.
 
+> **Quick Start**: For a condensed version using the clean solution, see [`docs/BENCH2DRIVE_TRAINING_GUIDE.md`](../BENCH2DRIVE_TRAINING_GUIDE.md)
+
+## Two Training Approaches
+
+1. **Original Approach** (this guide): Modifies configuration files directly
+2. **Clean Solution** (recommended): Uses extended agent with automatic normalization
+
+This guide covers the original approach in detail. For the clean solution that doesn't modify original code, see the Quick Start guide above.
+
 ## Prerequisites
 
 ### 1. Environment Setup
@@ -159,8 +168,10 @@ train_test_split:
 
 ### 3.1 Start Training
 
+> **Important**: The commands below use the original agent. For the clean solution that handles normalization automatically, use `agent=diffusiondrive_agent_extended` and see the [Quick Start Guide](../BENCH2DRIVE_TRAINING_GUIDE.md).
+
 ```bash
-# Basic training command
+# Basic training command (original approach)
 python3 navsim/planning/script/run_training.py \
     agent=diffusiondrive_agent \
     experiment_name=training_diffusiondrive_bench2drive \
@@ -172,16 +183,8 @@ python3 navsim/planning/script/run_training.py \
     use_cache_without_dataset=true \
     force_cache_computation=false
 
-# Training with specific GPU settings
-python3 navsim/planning/script/run_training.py \
-    agent=diffusiondrive_agent \
-    experiment_name=training_diffusiondrive_bench2drive \
-    train_test_split=bench2drive_mini \
-    split=trainval \
-    trainer.params.max_epochs=100 \
-    dataloader.params.batch_size=16 \
-    dataloader.params.num_workers=4 \
-    cache_path="${NAVSIM_EXP_ROOT}/training_cache/"
+# For clean solution (recommended):
+# ./scripts/training/train.sh --agent "diffusiondrive_agent_extended" --dataset "bench2drive"
 ```
 
 ### 3.2 Monitor Training

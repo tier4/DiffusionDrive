@@ -38,3 +38,5 @@ ased on the code in bench2drive_scene.py, here's what happens with the BEV cache
 
   So you don't need to worry about regenerating your BEV cache - the code will properly extract the front portion from your full BEV cache automatically!
   ```
+
+- [ ] he normalization profiles in the normalization scripts

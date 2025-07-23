@@ -289,3 +289,13 @@ STRAIGHT (3)  → 2         → STRAIGHT (1)  # STRAIGHT maps to STRAIGHT
 - Remember the coordinate system flip causes LEFT/RIGHT inversion
 - Check `COMMAND_MAPPING_ANALYSIS.md` in Bench2DriveZoo for details
 - Verify with visualization to ensure correct mapping
+
+## Trajectory Processing and NaN Loss Fix
+
+For detailed information about:
+- Trajectory coordinate systems and transformations
+- Normalization approaches for different datasets
+- K-means anchor generation
+- Resolution of NaN loss issues during training
+
+See: [Trajectory Processing Documentation](../TRAJECTORY_PROCESSING.md)

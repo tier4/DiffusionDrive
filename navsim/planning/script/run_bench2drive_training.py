@@ -87,10 +87,11 @@ def main(cfg: DictConfig) -> None:
     :param cfg: omegaconf dictionary
     """
     
-    # Enable autograd anomaly detection for debugging NaN issues
-    import torch
-    torch.autograd.set_detect_anomaly(True)
-    logger.warning("Autograd anomaly detection enabled - this will slow down training!")
+    # Autograd anomaly detection disabled for performance
+    # Uncomment the following lines if debugging NaN issues:
+    # import torch
+    # torch.autograd.set_detect_anomaly(True)
+    # logger.warning("Autograd anomaly detection enabled - this will slow down training!")
     
     pl.seed_everything(cfg.seed, workers=True)
     logger.info(f"Global Seed set to {cfg.seed}")

@@ -1,0 +1,108 @@
+# Trajectory Normalization Profiles for DiffusionDrive
+# Each profile defines normalization parameters for different datasets
+
+defaults:
+  - _self_
+
+normalization_profiles:
+  navsim:
+    description: "NAVSIM dataset - real-world driving data"
+    characteristics:
+      - "Forward-biased trajectories (99.9% positive X)"
+      - "Well-centered Y distribution"
+      - "Full heading range for complex maneuvers"
+    parameters:
+      x:
+        offset: 1.2
+        scale: 56.9
+        expected_range: [-1.2, 55.7]
+      y:
+        offset: 20.0
+        scale: 46.0
+        expected_range: [-20.0, 26.0]
+      heading:
+        offset: 2.0
+        scale: 3.9
+        expected_range: [-2.0, 1.9]
+    verified: true
+    validation_metrics:
+      out_of_range_percentage: 0.0
+      tested_samples: 1000
+
+  bench2drive:
+    description: "Bench2Drive dataset - CARLA simulation data"
+    characteristics:
+      - "Centered trajectory distribution"
+      - "Symmetric X/Y ranges"
+      - "Very small heading variation (30x smaller than NavSim)"
+    parameters:
+      x:
+        offset: 35.0
+        scale: 70.0
+        expected_range: [-35.0, 35.0]
+      y:
+        offset: 35.0
+        scale: 70.0
+        expected_range: [-35.0, 35.0]
+      heading:
+        offset: 0.05
+        scale: 0.5  # Increased from 0.1 for numerical stability
+        expected_range: [-0.15, 0.10]
+    verified: true
+    validation_metrics:
+      out_of_range_percentage: 0.2  # After refinement
+      tested_samples: 500
+
+  custom:
+    description: "Custom dataset - user-defined parameters"
+    characteristics:
+      - "User must provide normalization parameters"
+      - "Or use fit_from_data() to compute automatically"
+    parameters:
+      x:
+        offset: 0.0
+        scale: 1.0
+        expected_range: [-1.0, 1.0]
+      y:
+        offset: 0.0
+        scale: 1.0
+        expected_range: [-1.0, 1.0]
+      heading:
+        offset: 0.0
+        scale: 1.0
+        expected_range: [-1.0, 1.0]
+    verified: false
+
+# Configuration for automatic dataset detection
+auto_detection:
+  path_keywords:
+    navsim: ["navsim", "navtrain", "navtest", "training_cache"]
+    bench2drive: ["bench2drive", "b2d", "carla", "bench2drive_cache"]
+  
+  # Fallback detection based on trajectory statistics
+  statistical_detection:
+    enabled: true
+    metrics:
+      # If X mean > 10 and X positive ratio > 0.9, likely NavSim
+      forward_bias_threshold: 0.9
+      x_mean_threshold: 10.0
+      # If heading std < 0.1, likely Bench2Drive
+      heading_std_threshold: 0.1
+
+# Safety parameters
+safety:
+  clamp_normalized: true  # Always clamp to [-1, 1]
+  warn_out_of_range: true  # Log warnings for values outside expected range
+  nan_check: true  # Check for NaN/Inf values
+  
+  # Minimum scales to prevent numerical issues
+  min_scale:
+    x: 1.0
+    y: 1.0
+    heading: 0.5
+  
+  # Percentile for robust parameter estimation
+  percentile: 95.0
+  
+  # Safety margin when computing from data
+  margin_factor: 0.1  # 10% margin

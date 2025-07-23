@@ -4,8 +4,6 @@ _convert_: 'all'
 config:
   _target_: navsim.agents.diffusiondrive.transfuser_config.TransfuserConfig
   _convert_: 'all'
-  bkb_path: "/workspace/DiffusionDrive/download/pytorch_model.bin"
-  plan_anchor_path: "/workspace/DiffusionDrive/download/kmeans_navsim_traj_20.npy"
 
   trajectory_sampling:
     _target_: nuplan.planning.simulation.trajectory.trajectory_sampling.TrajectorySampling
