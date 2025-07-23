@@ -299,23 +299,24 @@ def generate_simple_bev_semantic(
     if map_bev is not None:
         bev_map = map_bev.copy()
     else:
-        bev_map = np.zeros((bev_height, bev_width), dtype=np.float32)
+        bev_map = np.zeros((bev_height, bev_width), dtype=np.uint8)
         
         # Add road from trajectory only if no map data
         if trajectory is not None and len(trajectory) > 0:
             road_mask = generate_road_mask_from_trajectory(
                 trajectory, bev_height, bev_width, resolution
             )
-            bev_map[road_mask > 0] = 1.0  # Road class
+            bev_map[road_mask > 0] = 1  # Road class
     
     # Add vehicles from agents (always add dynamic objects)
     if agents is not None and agent_labels is not None:
         vehicle_mask = generate_vehicle_mask_from_agents(
             agents, agent_labels, bev_height, bev_width, resolution
         )
-        bev_map[vehicle_mask > 0] = 5.0  # Vehicle class
+        bev_map[vehicle_mask > 0] = 5  # Vehicle class
     
-    return bev_map
+    # Ensure integer type for class labels
+    return bev_map.astype(np.uint8)
 
 
 def project_semantic_to_bev(

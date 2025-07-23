@@ -126,6 +126,14 @@ if [ ! -z "$LEARNING_RATE" ]; then
     TRAINING_ARGS+=("agent.lr=$LEARNING_RATE")
 fi
 
+# Safety check for Bench2Drive cache
+if [[ "$DATASET_TYPE" == "bench2drive"* ]]; then
+    echo "⚠️  WARNING: Training on Bench2Drive dataset" | tee -a "$LOG_FILE"
+    echo "   Please ensure cache was regenerated with normalization fixes!" | tee -a "$LOG_FILE"
+    echo "   Run scripts/debug/check_nan_fixes_status.py to verify fixes" | tee -a "$LOG_FILE"
+    echo "" | tee -a "$LOG_FILE"
+fi
+
 # Start training
 log_start "Training"
 

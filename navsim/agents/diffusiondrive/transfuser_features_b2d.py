@@ -86,7 +86,36 @@ class Bench2DriveFeatureBuilder(AbstractFeatureBuilder):
         # Process status features
         features["status_feature"] = self._get_status_feature(agent_input.ego_statuses)
 
+        # Validate features to prevent NaN issues
+        self._validate_features(features)
+
         return features
+    
+    def _validate_features(self, features: Dict[str, torch.Tensor]) -> None:
+        """
+        Validate features to ensure they don't contain NaN/Inf values.
+        
+        Args:
+            features: Dictionary of feature tensors
+            
+        Raises:
+            ValueError: If any feature contains invalid values
+        """
+        for name, tensor in features.items():
+            if torch.isnan(tensor).any():
+                raise ValueError(f"Feature '{name}' contains NaN values!")
+            
+            if torch.isinf(tensor).any():
+                raise ValueError(f"Feature '{name}' contains Inf values!")
+            
+            # Check specific ranges for known features
+            if name == "camera_feature":
+                if tensor.min() < -0.1 or tensor.max() > 1.1:
+                    print(f"Warning: Camera feature has values outside [0,1]: min={tensor.min():.3f}, max={tensor.max():.3f}")
+            
+            elif name == "lidar_feature":
+                if tensor.min() < -0.1 or tensor.max() > 1.1:
+                    print(f"Warning: LiDAR feature has values outside [0,1]: min={tensor.min():.3f}, max={tensor.max():.3f}")
 
     def _get_camera_feature(self, cameras: List[any]) -> torch.Tensor:
         """
@@ -153,6 +182,10 @@ class Bench2DriveFeatureBuilder(AbstractFeatureBuilder):
 
         # Convert to tensor and change to CHW format
         stitched = torch.from_numpy(stitched_resized).permute(2, 0, 1).float()
+        
+        # CRITICAL: Normalize to [0, 1] range to match NavSim
+        # NavSim uses transforms.ToTensor() which divides by 255
+        stitched = stitched / 255.0
 
         return stitched
 
@@ -210,11 +243,11 @@ class Bench2DriveFeatureBuilder(AbstractFeatureBuilder):
         # Ensure non-negative values after resize (LANCZOS can produce small negative values)
         hist = np.maximum(hist, 0.0)
 
-        # Normalize using log scale and clip
-        # This helps handle the dynamic range of point counts
-        hist = np.log1p(hist)  # log(1 + x) to handle zeros
-        hist = hist / LIDAR_NORMALIZATION_FACTOR  # Normalize
-        hist = np.clip(hist, 0.0, 1.0)  # Clip to [0, 1]
+        # Normalize to match NavSim's approach
+        # NavSim clips histogram values to hist_max_per_pixel and then normalizes
+        hist_max_per_pixel = self.config.hist_max_per_pixel  # Default is 5
+        hist = np.clip(hist, 0, hist_max_per_pixel)
+        hist = hist / hist_max_per_pixel  # Normalize to [0, 1]
 
         # Convert to tensor and add channel dimension
         bev_tensor = torch.from_numpy(hist).unsqueeze(0)  # [1, H, W]

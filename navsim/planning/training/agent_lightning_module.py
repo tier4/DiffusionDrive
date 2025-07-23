@@ -43,6 +43,24 @@ class AgentLightningModule(pl.LightningModule):
         :return: scalar loss
         """
         return self._step(batch, "train")
+    
+    def on_before_optimizer_step(self, optimizer, optimizer_idx=0):
+        """
+        Clip gradients before optimizer step to prevent exploding gradients.
+        This helps prevent NaN losses during training.
+        """
+        # Clip gradients to prevent NaN
+        import torch.nn.utils as nn_utils
+        nn_utils.clip_grad_norm_(self.parameters(), max_norm=1.0)
+        
+        # Optional: Log gradient norms for debugging
+        total_norm = 0
+        for p in self.parameters():
+            if p.grad is not None:
+                param_norm = p.grad.data.norm(2)
+                total_norm += param_norm.item() ** 2
+        total_norm = total_norm ** 0.5
+        self.log("train/grad_norm", total_norm, on_step=True, prog_bar=False)
 
     def validation_step(self, batch: Tuple[Dict[str, Tensor], Dict[str, Tensor]], batch_idx: int):
         """

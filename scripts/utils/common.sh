@@ -30,7 +30,7 @@ log_finish() {
     local hours=$((duration / 3600))
     local minutes=$(((duration % 3600) / 60))
     local seconds=$((duration % 60))
-    
+
     echo "=== Finished: $task_name ===" | tee -a "$LOG_FILE"
     echo "Finish Time: $finish_datetime" | tee -a "$LOG_FILE"
     echo "Duration: ${hours}h ${minutes}m ${seconds}s" | tee -a "$LOG_FILE"
@@ -39,21 +39,28 @@ log_finish() {
 # Setup environment variables
 setup_environment() {
     export HYDRA_FULL_ERROR="${HYDRA_FULL_ERROR:-1}"
-    
+
+    # Set default NAVSIM_CACHE_ROOT if not set
+    export NAVSIM_CACHE_ROOT="${NAVSIM_CACHE_ROOT:-/workspace/navsim_workspace/cache}"
+
     # Check required environment variables
     if [ -z "$NAVSIM_DEVKIT_ROOT" ]; then
         echo "ERROR: NAVSIM_DEVKIT_ROOT not set" | tee -a "$LOG_FILE"
         exit 1
     fi
-    
+
     if [ -z "$NAVSIM_EXP_ROOT" ]; then
         echo "ERROR: NAVSIM_EXP_ROOT not set" | tee -a "$LOG_FILE"
         exit 1
     fi
-    
+
+    # Create cache directory if it doesn't exist
+    mkdir -p "$NAVSIM_CACHE_ROOT"
+
     echo "Environment:" | tee -a "$LOG_FILE"
     echo "  NAVSIM_DEVKIT_ROOT: $NAVSIM_DEVKIT_ROOT" | tee -a "$LOG_FILE"
     echo "  NAVSIM_EXP_ROOT: $NAVSIM_EXP_ROOT" | tee -a "$LOG_FILE"
+    echo "  NAVSIM_CACHE_ROOT: $NAVSIM_CACHE_ROOT" | tee -a "$LOG_FILE"
 }
 
 # Setup CUDA devices
@@ -70,18 +77,18 @@ build_training_args() {
     local max_epochs="${3:-100}"
     local batch_size="${4:-32}"
     local num_workers="${5:-8}"
-    local dataset="${6:-navtrain}"  # New parameter for dataset type
-    
+    local dataset="${6:-navtrain}" # New parameter for dataset type
+
     # Set cache path based on dataset type
     local cache_path
     if [[ "$dataset" == "bench2drive" ]]; then
-        cache_path="${NAVSIM_EXP_ROOT}/bench2drive_Base_cache/"
+        cache_path="${NAVSIM_CACHE_ROOT}/bench2drive_Base_cache/"
     elif [[ "$dataset" == "bench2drive_mini" ]]; then
-        cache_path="${NAVSIM_EXP_ROOT}/bench2drive_mini_cache/"
+        cache_path="${NAVSIM_CACHE_ROOT}/bench2drive_mini_cache/"
     else
-        cache_path="${NAVSIM_EXP_ROOT}/training_cache/"
+        cache_path="${NAVSIM_CACHE_ROOT}/training_cache/"
     fi
-    
+
     TRAINING_ARGS=(
         "agent=$agent"
         "experiment_name=$experiment_name"
@@ -94,7 +101,7 @@ build_training_args() {
         "use_cache_without_dataset=True"
         "force_cache_computation=False"
     )
-    
+
     export TRAINING_ARGS
 }
 
@@ -103,7 +110,7 @@ build_evaluation_args() {
     local checkpoint_path="$1"
     local experiment_name="$2"
     local agent="${3:-diffusiondrive_agent}"
-    
+
     EVAL_ARGS=(
         "train_test_split=navtest"
         "agent=$agent"
@@ -111,6 +118,6 @@ build_evaluation_args() {
         "agent.checkpoint_path='$checkpoint_path'"
         "experiment_name='$experiment_name'"
     )
-    
+
     export EVAL_ARGS
 }

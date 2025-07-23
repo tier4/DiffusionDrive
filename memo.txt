@@ -1,5 +1,0 @@
-What did the LIDAR_PIXELS_PER_METER used exactly?
-In orignial DIffusionDrive, the size the BEV segmentation map and lidar are different? I want to see the evidence.
-what does MAX_AGENTS do?
-command mapping
-LIDAR HIsto problems

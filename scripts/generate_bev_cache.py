@@ -2,8 +2,8 @@
 """
 Generate BEV semantic maps offline for Bench2Drive dataset.
 
-This script processes Bench2Drive scenarios and generates BEV semantic maps
-using vectorized map data, saving them to disk for efficient loading during training.
+This script uses Ray and a KDTree-based MapProcessor for high-performance,
+memory-efficient BEV map generation.
 """
 import os
 import sys
@@ -11,93 +11,70 @@ import argparse
 import json
 import gzip
 import numpy as np
+import logging
+import ray
 from pathlib import Path
 from tqdm import tqdm
-import multiprocessing as mp
-from typing import Dict, List, Tuple, Optional
-import logging
+from typing import Dict, Any
 
-# Add parent directory to path
-sys.path.append(str(Path(__file__).parent.parent))
-
-from navsim.common.bev_map_utils import (
+from navsim.common.bev_map_utils_v2 import (
+    MapProcessor,
     load_map_data,
-    generate_bev_from_map,
-    generate_full_bev_from_map,
     extract_front_half_bev,
+    generate_full_bev_from_map,  # Assuming this is the updated version
 )
 
 
-def setup_logging(verbose: bool = False):
-    """Setup logging configuration."""
+def setup_logging(verbose: bool = False) -> logging.Logger:
+    """Sets up logging for the main driver."""
     level = logging.DEBUG if verbose else logging.INFO
     logging.basicConfig(level=level, format="%(asctime)s - %(levelname)s - %(message)s")
     return logging.getLogger(__name__)
 
 
 def load_annotation(anno_path: Path) -> Dict:
-    """Load Bench2Drive annotation file."""
+    """Loads a gzipped JSON annotation file."""
     with gzip.open(anno_path, "rt", encoding="utf-8") as f:
         return json.load(f)
 
 
-def process_frame(
+@ray.remote
+def worker_process_frame_ray(
     frame_path: Path,
-    map_data: Dict,
-    output_dir: Path,
-    generate_full: bool = True,
-    overwrite: bool = False,
-) -> Optional[Path]:
+    output_root_dir: Path,
+    map_processor_refs: Dict[str, ray.ObjectRef],
+    generate_full: bool,
+    overwrite: bool,
+) -> bool:
     """
-    Process a single frame to generate BEV map.
-
-    Args:
-        frame_path: Path to annotation file
-        map_data: Loaded map data for the town
-        output_dir: Directory to save BEV maps
-        generate_full: Whether to generate full 360° BEV
-        overwrite: Whether to overwrite existing files
-
-    Returns:
-        Path to saved BEV file or None if skipped
+    Ray worker task that uses the shared MapProcessor to generate a BEV map.
     """
-    # Output path
-    frame_number = frame_path.stem.split(".")[0]  # Remove .json from stem
-    output_path = output_dir / f"{frame_number}.npz"
+    frame_number = frame_path.stem.split(".")[0]
+    scenario_name = frame_path.parent.parent.name
+    output_path = output_root_dir / scenario_name / f"{frame_number}.npz"
 
-    # Skip if exists and not overwriting
     if output_path.exists() and not overwrite:
-        return None
+        return False  # Skip if already exists and not overwriting
 
-    # Create output directory
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     try:
-        # Load annotation
         anno = load_annotation(frame_path)
-
-        # Get world2ego transformation
-        # Note: B2D uses left-handed coordinates
         world2ego = np.array(anno["bounding_boxes"][0]["world2ego"])
 
-        # Generate BEV
+        # Find the correct map processor for this frame's town
+        town_name = next((p for p in scenario_name.split("_") if p.startswith("Town")), None)
+        if not town_name or town_name not in map_processor_refs:
+            logging.warning(f"No map processor found for town {town_name} in frame {frame_path}")
+            return False
+
+        # Get the MapProcessor object from Ray's object store
+        map_processor = ray.get(map_processor_refs[town_name])
+
         if generate_full:
-            # Generate full 360° BEV (256x256)
-            logging.debug(f"Generating full BEV for frame {frame_number}")
-            full_bev = generate_full_bev_from_map(
-                map_data=map_data,
-                world2ego=world2ego,
-                full_height=256,
-                full_width=256,
-                resolution=0.25,
-                lane_thickness=0.4,
-                max_distance=75.0,
-            )
-
-            # Extract front half for NavSim format (128x256)
+            # Call the optimized function that uses the processor
+            full_bev = generate_full_bev_from_map(map_processor, world2ego)
             front_bev = extract_front_half_bev(full_bev)
-
-            # Save both versions
             np.savez_compressed(
                 output_path,
                 full_bev=full_bev.astype(np.float32),
@@ -105,154 +82,31 @@ def process_frame(
                 world2ego=world2ego,
                 frame_idx=int(frame_number),
             )
-
-            # Log statistics
-            full_unique = np.unique(full_bev)
-            front_unique = np.unique(front_bev)
-            logging.debug(
-                f"Frame {frame_number}: Full BEV classes {full_unique}, Front BEV classes {front_unique}"
-            )
         else:
-            # Generate only front BEV (128x256)
-            logging.debug(f"Generating front-only BEV for frame {frame_number}")
-            front_bev = generate_bev_from_map(
-                map_data=map_data,
-                world2ego=world2ego,
-                bev_height=128,
-                bev_width=256,
-                resolution=0.25,
-                coverage_behind=0.0,
-                lane_thickness=0.4,
-                max_distance=50.0,
-            )
-
-            # Save
+            # Call the processor's fast generation method directly
+            front_bev = map_processor.generate_bev(world2ego)
             np.savez_compressed(
                 output_path,
                 front_bev=front_bev.astype(np.float32),
                 world2ego=world2ego,
                 frame_idx=int(frame_number),
             )
-
-            # Log statistics
-            front_unique = np.unique(front_bev)
-            logging.debug(f"Frame {frame_number}: Front BEV classes {front_unique}")
-
-        return output_path
-
+        return True
     except Exception as e:
-        logging.error(f"Error processing {frame_path}: {e}")
-        return None
-
-
-def process_scenario(
-    scenario_dir: Path,
-    map_dir: Path,
-    output_dir: Path,
-    generate_full: bool = True,
-    overwrite: bool = False,
-    max_frames: Optional[int] = None,
-) -> Tuple[str, int, int]:
-    """
-    Process all frames in a scenario.
-
-    Args:
-        scenario_dir: Path to scenario directory
-        map_dir: Path to map directory
-        output_dir: Output directory for BEV maps
-        generate_full: Whether to generate full 360° BEV
-        overwrite: Whether to overwrite existing files
-        max_frames: Maximum number of frames to process
-
-    Returns:
-        Tuple of (scenario_name, processed_count, skipped_count)
-    """
-    scenario_name = scenario_dir.name
-
-    # Extract town name from scenario
-    # Format: ScenarioType_TownXX_RouteXX_WeatherXX
-    parts = scenario_name.split("_")
-    town_name = None
-    for part in parts:
-        if part.startswith("Town"):
-            town_name = part
-            break
-
-    if not town_name:
-        logging.warning(f"Could not extract town name from {scenario_name}")
-        return scenario_name, 0, 0
-
-    # Load map data
-    map_path = map_dir / f"{town_name}_HD_map.npz"
-    if not map_path.exists():
-        logging.warning(f"Map not found: {map_path}")
-        return scenario_name, 0, 0
-
-    try:
-        logging.info(f"Loading map data from {map_path}")
-        map_data = load_map_data(map_path)
-        logging.info(f"Map loaded successfully with {len(map_data)} roads")
-    except Exception as e:
-        logging.error(f"Error loading map {map_path}: {e}")
-        return scenario_name, 0, 0
-
-    # Get annotation files
-    anno_dir = scenario_dir / "anno"
-    if not anno_dir.exists():
-        logging.warning(f"No annotation directory: {anno_dir}")
-        return scenario_name, 0, 0
-
-    anno_files = sorted(anno_dir.glob("*.json.gz"))
-    if max_frames:
-        anno_files = anno_files[:max_frames]
-
-    logging.info(f"Processing {len(anno_files)} frames for scenario {scenario_name}")
-
-    # Process frames
-    processed = 0
-    skipped = 0
-
-    for i, anno_file in enumerate(anno_files):
-        if i > 0 and i % 50 == 0:
-            logging.info(f"  Progress: {i}/{len(anno_files)} frames processed")
-
-        result = process_frame(
-            anno_file, map_data, output_dir / scenario_name, generate_full, overwrite
-        )
-
-        if result:
-            processed += 1
-        else:
-            skipped += 1
-
-    logging.info(f"Scenario {scenario_name} completed: {processed} processed, {skipped} skipped")
-    return scenario_name, processed, skipped
-
-
-def worker_process_scenario(args):
-    """Worker function for multiprocessing."""
-    return process_scenario(*args)
+        logging.error(f"Error processing {frame_path}: {e}", exc_info=True)
+        return False
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--data-root",
-        type=str,
-        default="/workspace/Bench2Drive-mini",
-        help="Root directory of Bench2Drive dataset",
+        "--data-root", type=str, required=True, help="Root directory of Bench2Drive dataset"
     )
     parser.add_argument(
-        "--map-dir",
-        type=str,
-        default="/workspace/Bench2Drive-Map",
-        help="Directory containing map NPZ files",
+        "--map-dir", type=str, required=True, help="Directory containing map NPZ files"
     )
     parser.add_argument(
-        "--output-dir",
-        type=str,
-        default="/workspace/DiffusionDrive/data/bev_cache",
-        help="Output directory for BEV cache",
+        "--output-dir", type=str, required=True, help="Output directory for BEV cache"
     )
     parser.add_argument(
         "--scenarios", type=str, nargs="+", help="Specific scenarios to process (default: all)"
@@ -262,97 +116,109 @@ def main():
     )
     parser.add_argument("--overwrite", action="store_true", help="Overwrite existing BEV files")
     parser.add_argument("--max-frames", type=int, help="Maximum frames per scenario to process")
-    parser.add_argument("--workers", type=int, default=4, help="Number of parallel workers")
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=os.cpu_count(),
+        help="Number of parallel workers (CPUs for Ray)",
+    )
     parser.add_argument("--verbose", action="store_true", help="Enable verbose logging")
-
     args = parser.parse_args()
 
-    # Setup logging
     logger = setup_logging(args.verbose)
+    ray.init(
+        num_cpus=args.workers, logging_level=logging.INFO if not args.verbose else logging.DEBUG
+    )
+    logger.info(f"Ray initialized with {ray.available_resources().get('CPU', 0)} CPUs.")
 
-    # Paths
-    data_root = Path(args.data_root)
-    map_dir = Path(args.map_dir)
-    output_dir = Path(args.output_dir)
+    try:
+        data_root, map_dir, output_dir = (
+            Path(args.data_root),
+            Path(args.map_dir),
+            Path(args.output_dir),
+        )
+        if not data_root.is_dir() or not map_dir.is_dir():
+            logger.error(f"Data root ({data_root}) or map directory ({map_dir}) not found.")
+            return 1
+        output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Validate paths
-    if not data_root.exists():
-        logger.error(f"Data root not found: {data_root}")
-        return 1
+        # --- 1. Collect all frames and unique towns ---
+        scenario_dirs = (
+            [data_root / s for s in args.scenarios]
+            if args.scenarios
+            else [d for d in data_root.iterdir() if d.is_dir() and "Town" in d.name]
+        )
 
-    if not map_dir.exists():
-        logger.error(f"Map directory not found: {map_dir}")
-        return 1
+        all_frame_files, unique_towns = [], set()
+        for scenario_dir in (s for s in scenario_dirs if s.is_dir()):
+            town_name = next(
+                (p for p in scenario_dir.name.split("_") if p.startswith("Town")), None
+            )
+            if town_name:
+                unique_towns.add(town_name)
 
-    # Create output directory
-    output_dir.mkdir(parents=True, exist_ok=True)
+            anno_dir = scenario_dir / "anno"
+            if anno_dir.is_dir():
+                frames = sorted(anno_dir.glob("*.json.gz"))
+                all_frame_files.extend(frames[: args.max_frames] if args.max_frames else frames)
 
-    # Get scenarios to process
-    if args.scenarios:
-        scenario_dirs = [data_root / s for s in args.scenarios]
-    else:
-        # Get all scenario directories
-        scenario_dirs = [
-            d for d in data_root.iterdir() if d.is_dir() and "Town" in d.name and "Route" in d.name
+        if not all_frame_files:
+            logger.warning("No frames found to process.")
+            return 0
+
+        # --- 2. Pre-process maps ONCE and share with Ray ---
+        logger.info(f"Found {len(unique_towns)} unique towns. Pre-processing maps with KDTree...")
+        map_processor_refs = {}
+        for town_name in tqdm(unique_towns, desc="Pre-processing maps"):
+            map_path = map_dir / f"{town_name}_HD_map.npz"
+            if map_path.exists():
+                map_data = load_map_data(map_path)
+                processor = MapProcessor(map_data)
+                map_processor_refs[town_name] = ray.put(processor)
+        logger.info("All maps pre-processed and shared in Ray's object store.")
+
+        # --- 3. Launch Ray tasks ---
+        logger.info(f"Dispatching {len(all_frame_files)} frames to Ray workers...")
+        result_refs = [
+            worker_process_frame_ray.remote(
+                frame, output_dir, map_processor_refs, args.full_bev, args.overwrite
+            )
+            for frame in all_frame_files
         ]
 
-    # Filter valid scenarios
-    valid_scenarios = [s for s in scenario_dirs if s.exists()]
-
-    logger.info(f"Found {len(valid_scenarios)} scenarios to process")
-
-    # Prepare arguments for workers
-    worker_args = [
-        (scenario_dir, map_dir, output_dir, args.full_bev, args.overwrite, args.max_frames)
-        for scenario_dir in valid_scenarios
-    ]
-
-    # Process scenarios
-    total_processed = 0
-    total_skipped = 0
-
-    if args.workers > 1:
-        # Parallel processing
-        with mp.Pool(args.workers) as pool:
-            results = list(
-                tqdm(
-                    pool.imap(worker_process_scenario, worker_args),
-                    total=len(worker_args),
-                    desc="Processing scenarios",
-                )
-            )
-    else:
-        # Sequential processing
+        # --- 4. Collect results with a progress bar ---
         results = []
-        for args_tuple in tqdm(worker_args, desc="Processing scenarios"):
-            results.append(process_scenario(*args_tuple))
+        with tqdm(total=len(result_refs), desc="Processing frames") as pbar:
+            while result_refs:
+                done_refs, result_refs = ray.wait(
+                    result_refs, num_returns=min(len(result_refs), 100)
+                )
+                results.extend(ray.get(done_refs))
+                pbar.update(len(done_refs))
 
-    # Summarize results
-    for scenario_name, processed, skipped in results:
-        total_processed += processed
-        total_skipped += skipped
-        if processed > 0:
-            logger.info(f"{scenario_name}: {processed} processed, {skipped} skipped")
+        # --- 5. Summarize results ---
+        total_processed = sum(1 for r in results if r)
+        total_skipped = len(results) - total_processed
+        logger.info(
+            f"\n--- Processing Complete ---\nTotal Frames Processed: {total_processed}\nTotal Frames Skipped/Failed: {total_skipped}"
+        )
 
-    logger.info(f"\nTotal: {total_processed} processed, {total_skipped} skipped")
+        # Save metadata...
+        metadata = {
+            "data_root": str(data_root),
+            "map_dir": str(map_dir),
+            "generate_full": args.full_bev,
+            "total_processed": total_processed,
+            "total_skipped": total_skipped,
+        }
+        with open(output_dir / "metadata.json", "w") as f:
+            json.dump(metadata, f, indent=2)
+        logger.info(f"Metadata saved to {output_dir / 'metadata.json'}")
 
-    # Save metadata
-    metadata = {
-        "data_root": str(data_root),
-        "map_dir": str(map_dir),
-        "generate_full": args.full_bev,
-        "scenarios": [s.name for s in valid_scenarios],
-        "total_processed": total_processed,
-        "total_skipped": total_skipped,
-    }
-
-    metadata_path = output_dir / "metadata.json"
-    with open(metadata_path, "w") as f:
-        json.dump(metadata, f, indent=2)
-
-    logger.info(f"Metadata saved to {metadata_path}")
-
-    return 0
+        return 0
+    finally:
+        ray.shutdown()
+        logger.info("Ray has been shut down.")
 
 
 if __name__ == "__main__":
