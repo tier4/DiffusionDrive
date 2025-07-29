@@ -17,11 +17,11 @@ from pathlib import Path
 from tqdm import tqdm
 from typing import Dict, Any
 
-from navsim.common.bev_map_utils_v2 import (
+from navsim.common.bev_map_utils import (
     MapProcessor,
     load_map_data,
     extract_front_half_bev,
-    generate_full_bev_from_map,  # Assuming this is the updated version
+    generate_full_bev_from_map,
 )
 
 

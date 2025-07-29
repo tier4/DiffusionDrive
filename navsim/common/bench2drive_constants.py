@@ -1,48 +1,24 @@
-"""Constants for Bench2Drive integration with DiffusionDrive.
+# Bench2Drive string class names to NavSim semantic classes
+B2D_CLASS_TO_NAVSIM = {
+    "vehicle": 5,  # All vehicles → NavSim class 5
+    "walker": 6,  # Pedestrians → NavSim class 6
+    "traffic_light": 4,  # Static objects → NavSim class 4
+    "traffic_sign": 4,  # Static objects → NavSim class 4
+    "ego_vehicle": -1,  # Skip ego vehicle
+}
 
-This file contains all constants used in the Bench2Drive integration,
-documenting the differences between Bench2Drive's native data format
-and DiffusionDrive's expected inputs.
-"""
+# BEV semantic map dimensions (from TransfuserConfig)
+BEV_SEMANTIC_HEIGHT = 128  # lidar_resolution_height // 2 = 256 // 2
+BEV_SEMANTIC_WIDTH = 256  # lidar_resolution_width
 
-# LiDAR Coverage Parameters
-# -------------------------
-# Bench2Drive provides larger LiDAR coverage than DiffusionDrive expects.
-# We process at full resolution then resize to preserve maximum information.
+# Agent tracking parameters
+MAX_AGENTS = 30  # From num_bounding_boxes in TransfuserConfig
 
-BENCH2DRIVE_LIDAR_RANGE_M = 85.0  # Bench2Drive native LiDAR range in meters
-DIFFUSIONDRIVE_LIDAR_RANGE_M = 64.0  # DiffusionDrive expected range (-32 to +32)
-LIDAR_PIXELS_PER_METER = 4.0  # Resolution for LiDAR BEV processing
+# Trajectory parameters
+NUM_FUTURE_WAYPOINTS = 8  # From trajectory_sampling: 4s / 0.5s = 8 waypoints
 
-# BEV Sizes
-# ---------
-# LiDAR BEV sizes at different stages of processing
-BENCH2DRIVE_LIDAR_SIZE = int(BENCH2DRIVE_LIDAR_RANGE_M * LIDAR_PIXELS_PER_METER)  # 340 pixels
-DIFFUSIONDRIVE_LIDAR_SIZE = 256  # DiffusionDrive expected LiDAR BEV size
-
-# BEV Semantic Dimensions
-# -----------------------
-# Semantic BEV dimensions match DiffusionDrive's expected format
-# Note: These are different from LiDAR BEV dimensions
-BEV_SEMANTIC_HEIGHT = 128  # Height of semantic BEV map
-BEV_SEMANTIC_WIDTH = 256   # Width of semantic BEV map
-
-# Fixed Parameters
-# ----------------
-NUM_FUTURE_WAYPOINTS = 8  # Number of future trajectory points
-MAX_AGENTS = 30  # Maximum number of agents to track
-LIDAR_NORMALIZATION_FACTOR = 10.0  # Normalization factor for LiDAR histogram
-
-# Command Mapping
-# ---------------
-# NavSim discrete command values
-NAVSIM_CMD_LEFT = 0
-NAVSIM_CMD_STRAIGHT = 1
-NAVSIM_CMD_RIGHT = 2
-NAVSIM_CMD_UNKNOWN = 3
-
-# Temporal Parameters
-# -------------------
-BENCH2DRIVE_FREQUENCY_HZ = 10  # Bench2Drive recording frequency
-DIFFUSIONDRIVE_FREQUENCY_HZ = 2  # DiffusionDrive training frequency
-TEMPORAL_DOWNSAMPLE_RATE = 5  # Take every 5th frame (10Hz → 2Hz)
+# LiDAR parameters
+BENCH2DRIVE_LIDAR_RANGE_M = 64.0  # 64 meters range for Bench2Drive LiDAR
+LIDAR_PIXELS_PER_METER = 4.0  # 4 pixels per meter resolution
+BENCH2DRIVE_LIDAR_SIZE = int(BENCH2DRIVE_LIDAR_RANGE_M * LIDAR_PIXELS_PER_METER)  # 256x256
+DIFFUSIONDRIVE_LIDAR_SIZE = 256  # Target size for DiffusionDrive model

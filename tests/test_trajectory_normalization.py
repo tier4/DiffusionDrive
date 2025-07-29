@@ -236,9 +236,9 @@ class TestTrajectoryNormalizer:
             assert config_path.exists()
 
             # Load config manually since config_path loading is not implemented
-            with open(config_path, 'r') as f:
+            with open(config_path, "r") as f:
                 loaded_config = json.load(f)
-            
+
             new_normalizer = TrajectoryNormalizer(dataset_type="custom")
             new_normalizer.normalization_params = loaded_config
 
@@ -352,5 +352,7 @@ class TestNormalizationIntegration:
         # Most normal data should still be in range with 95th percentile
         normalizer.normalization_params = params_95
         normalized_normal = normalizer.normalize(normal_data)
-        in_range_ratio = float(np.sum(np.abs(normalized_normal) <= 1)) / float(normalized_normal.size)
+        in_range_ratio = float(np.sum(np.abs(normalized_normal) <= 1)) / float(
+            normalized_normal.size
+        )
         assert in_range_ratio > 0.90

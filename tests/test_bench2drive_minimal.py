@@ -263,7 +263,7 @@ def test_command_mapping_comprehensive():
     # Test negative command values (VOID path)
     assert map_carla_command_to_discrete(-1) == 1, "VOID (-1) should map to STRAIGHT"
     assert map_carla_command_to_discrete(-999) == 1, "Any negative should map to STRAIGHT"
-    
+
     # Test all valid CARLA commands
     valid_mappings = {
         1: 0,  # LEFT → LEFT
@@ -273,15 +273,17 @@ def test_command_mapping_comprehensive():
         5: 0,  # CHANGELANELEFT → LEFT
         6: 2,  # CHANGELANERIGHT → RIGHT
     }
-    
+
     for carla_cmd, expected in valid_mappings.items():
         result = map_carla_command_to_discrete(carla_cmd)
         assert result == expected, f"Command {carla_cmd} should map to {expected}, got {result}"
-    
+
     # Test out of range commands (should map to UNKNOWN)
     for invalid_cmd in [7, 8, 999, 1000]:
         result = map_carla_command_to_discrete(invalid_cmd)
-        assert result == 3, f"Invalid command {invalid_cmd} should map to UNKNOWN (3), got {result}"
+        assert (
+            result == 3
+        ), f"Invalid command {invalid_cmd} should map to UNKNOWN (3), got {result}"
 
 
 def test_dimension_validation():
@@ -290,11 +292,11 @@ def test_dimension_validation():
         data_root=Path("/workspace/Bench2Drive-mini"),
         scenarios=["test_scenario"],
     )
-    
+
     # Expected dimensions based on DiffusionDrive
     EXPECTED_BEV_SEMANTIC_SHAPE = (128, 256)  # H=128, W=256
     EXPECTED_LIDAR_BEV_SHAPE = (1, 256, 256)  # C=1, H=256, W=256
-    
+
     # These would be tested if we had actual data
     # For now, just document the expected dimensions
     assert EXPECTED_BEV_SEMANTIC_SHAPE == (128, 256), "BEV semantic should be (128, 256)"

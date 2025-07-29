@@ -2,10 +2,8 @@
 Bench2Drive scene representation for CARLA-native training.
 """
 
-import gzip
-import json
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 from PIL import Image
 import laspy
@@ -19,6 +17,7 @@ from navsim.common.bench2drive_dataloader import (
     map_carla_command_to_discrete,
 )
 from navsim.common.bench2drive_constants import (
+    B2D_CLASS_TO_NAVSIM,
     BEV_SEMANTIC_HEIGHT,
     BEV_SEMANTIC_WIDTH,
     NUM_FUTURE_WAYPOINTS,
@@ -273,14 +272,36 @@ class Bench2DriveScene:
 
         Returns EgoStatus object.
         """
-        # Extract velocity (m/s)
-        # Note: Speed is scalar, need to convert to vector
-        speed = anno.get("speed", 0.0)
-        theta = anno.get("theta", 0.0)  # In degrees
+        # Find ego vehicle in bounding boxes for accurate heading
+        ego_box = None
+        bounding_boxes = anno.get("bounding_boxes", [])
+        for box in bounding_boxes:
+            if box.get("class") == "ego_vehicle":
+                ego_box = box
+                break
 
-        # Convert to velocity components
-        # Note: Keep in CARLA coordinates (no transformation)
-        theta_rad = np.radians(theta)
+        # Extract position and heading from ego bounding box if available
+        if ego_box:
+            # Use bounding box location for position
+            ego_x = ego_box["location"][0]
+            ego_y = ego_box["location"][1]
+
+            # Extract yaw from rotation (z-component)
+            ego_yaw_degrees = ego_box["rotation"][2]
+            ego_heading = -np.radians(ego_yaw_degrees)  # CW to CCW conversion
+
+            # For velocity, use the correct heading
+            theta_rad = np.radians(ego_yaw_degrees)
+        else:
+            # Fallback to annotation values if ego not found in bounding boxes
+            ego_x = anno.get("x", 0.0)
+            ego_y = anno.get("y", 0.0)
+            theta = anno.get("theta", 0.0)  # In degrees
+            ego_heading = -np.radians(theta)  # CW to CCW conversion
+            theta_rad = np.radians(theta)
+
+        # Extract velocity (m/s)
+        speed = anno.get("speed", 0.0)
         vx = speed * np.cos(theta_rad)
         vy = speed * np.sin(theta_rad)
         ego_velocity = np.array([vx, vy], dtype=np.float32)
@@ -294,11 +315,6 @@ class Bench2DriveScene:
         # Use command_near as it's for immediate navigation
         carla_command = anno.get("command_near", 3)  # Default to STRAIGHT
         driving_command = map_carla_command_to_discrete(carla_command)
-
-        # Extract position (for trajectory)
-        ego_x = anno.get("x", 0.0)
-        ego_y = anno.get("y", 0.0)
-        ego_heading = -np.radians(theta)  # CW to CCW conversion
 
         # Create ego pose (x, y, heading)
         ego_pose = np.array([ego_x, ego_y, ego_heading], dtype=np.float64)
@@ -327,11 +343,29 @@ class Bench2DriveScene:
         # Collect future positions
         trajectory = []
 
-        # Get ego position at current frame
+        # Get ego information at current frame
         current_anno = self._load_annotation(frame_idx)
-        current_x = current_anno.get("x", 0.0)
-        current_y = current_anno.get("y", 0.0)
-        current_theta = -np.radians(current_anno.get("theta", 0.0))  # Convert to radians CCW
+
+        # Find ego vehicle in bounding boxes for accurate transformation
+        ego_box = None
+        world2ego_matrix = None
+        for box in current_anno.get("bounding_boxes", []):
+            if box.get("class") == "ego_vehicle":
+                ego_box = box
+                # Get world2ego transformation matrix
+                world2ego_matrix = np.array(box.get("world2ego", np.eye(4).tolist()))
+                break
+
+        if ego_box:
+            # Use ego bounding box information
+            current_x = ego_box["location"][0]
+            current_y = ego_box["location"][1]
+            current_theta = -np.radians(ego_box["rotation"][2])  # CW to CCW
+        else:
+            # Fallback to annotation values
+            current_x = current_anno.get("x", 0.0)
+            current_y = current_anno.get("y", 0.0)
+            current_theta = -np.radians(current_anno.get("theta", 0.0))
 
         # Sample future frames (every 5 frames = 0.5s at 2Hz after downsampling)
         for i in range(1, NUM_FUTURE_WAYPOINTS + 1):  # NUM_FUTURE_WAYPOINTS future waypoints
@@ -339,23 +373,43 @@ class Bench2DriveScene:
 
             if future_idx < len(self.frames):
                 future_anno = self._load_annotation(future_idx)
-                future_x = future_anno.get("x", 0.0)
-                future_y = future_anno.get("y", 0.0)
-                future_theta = -np.radians(future_anno.get("theta", 0.0))
 
-                # Convert to ego-centric coordinates (no coordinate system transformation)
-                # Just translate and rotate to ego frame
-                dx = future_x - current_x
-                dy = future_y - current_y
+                # Find future ego position
+                future_ego_box = None
+                for box in future_anno.get("bounding_boxes", []):
+                    if box.get("class") == "ego_vehicle":
+                        future_ego_box = box
+                        break
 
-                # Rotate to ego frame
-                cos_theta = np.cos(-current_theta)
-                sin_theta = np.sin(-current_theta)
+                if future_ego_box:
+                    future_x = future_ego_box["location"][0]
+                    future_y = future_ego_box["location"][1]
+                    future_theta = -np.radians(future_ego_box["rotation"][2])
+                else:
+                    future_x = future_anno.get("x", 0.0)
+                    future_y = future_anno.get("y", 0.0)
+                    future_theta = -np.radians(future_anno.get("theta", 0.0))
 
-                ego_x = dx * cos_theta - dy * sin_theta
-                ego_y = dx * sin_theta + dy * cos_theta
+                # Convert to ego-centric coordinates using world2ego matrix if available
+                if world2ego_matrix is not None:
+                    # Transform future position using world2ego matrix
+                    future_world = np.array([future_x, future_y, 0.0, 1.0])
+                    future_ego = world2ego_matrix @ future_world
+                    ego_x = future_ego[0]
+                    ego_y = future_ego[1]
+                else:
+                    # Fallback to manual transformation
+                    dx = future_x - current_x
+                    dy = future_y - current_y
+
+                    # Rotate to ego frame
+                    cos_theta = np.cos(-current_theta)
+                    sin_theta = np.sin(-current_theta)
+
+                    ego_x = dx * cos_theta - dy * sin_theta
+                    ego_y = dx * sin_theta + dy * cos_theta
+
                 ego_heading = future_theta - current_theta
-
                 # Normalize heading to [-pi, pi]
                 ego_heading = np.arctan2(np.sin(ego_heading), np.cos(ego_heading))
 
@@ -369,28 +423,46 @@ class Bench2DriveScene:
 
         return torch.tensor(trajectory, dtype=torch.float64)
 
-    def get_agents(self, frame_idx: int = -1) -> Tuple[torch.Tensor, torch.Tensor]:
+    def get_agents(self, frame_idx: int = -1) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Get other agents' states and labels.
 
         Returns:
             agent_states: Tensor [max_agents, 5] with (x, y, heading, length, width)
             agent_labels: Boolean tensor [max_agents] indicating valid agents
+            agent_types: Tensor [max_agents] with NavSim class IDs for BEV rendering
         """
         if frame_idx == -1:
             frame_idx = self.history_frames
 
         anno = self._load_annotation(frame_idx)
 
-        # Extract ego position for ego-centric conversion
-        ego_x = anno.get("x", 0.0)
-        ego_y = anno.get("y", 0.0)
-        ego_theta = -np.radians(anno.get("theta", 0.0))  # Convert to radians CCW
+        # Find ego vehicle in bounding boxes for accurate transformation
+        ego_box = None
+        world2ego_matrix = None
+        for box in anno.get("bounding_boxes", []):
+            if box.get("class") == "ego_vehicle":
+                ego_box = box
+                # Get world2ego transformation matrix
+                world2ego_matrix = np.array(box.get("world2ego", np.eye(4).tolist()))
+                break
+
+        if ego_box:
+            # Use ego bounding box information
+            ego_x = ego_box["location"][0]
+            ego_y = ego_box["location"][1]
+            ego_theta = -np.radians(ego_box["rotation"][2])  # CW to CCW
+        else:
+            # Fallback to annotation values
+            ego_x = anno.get("x", 0.0)
+            ego_y = anno.get("y", 0.0)
+            ego_theta = -np.radians(anno.get("theta", 0.0))  # Convert to radians CCW
 
         # Process vehicles from bounding_boxes
         max_agents = MAX_AGENTS  # Maximum number of agents to track
         agent_states = np.zeros((max_agents, 5), dtype=np.float32)
         agent_labels = np.zeros(max_agents, dtype=bool)
+        agent_types = np.zeros(max_agents, dtype=np.int32)  # NavSim class IDs
 
         bboxes = anno.get("bounding_boxes", [])
         agent_idx = 0
@@ -401,16 +473,17 @@ class Bench2DriveScene:
             for obj in bboxes:
                 if agent_idx >= max_agents:
                     break
-                    
-                # Get object class
+
+                # Get object class and map to NavSim type
                 obj_class = obj.get("class", "")
-                
-                # Skip ego vehicle
-                if obj_class == "ego_vehicle":
+                navsim_class = B2D_CLASS_TO_NAVSIM.get(obj_class, -1)
+
+                # Skip ego vehicle or unmapped classes
+                if navsim_class == -1:
                     continue
-                    
-                # Process vehicles and pedestrians
-                if obj_class in ["vehicle", "pedestrian", "car", "truck", "motorcycle"]:
+
+                # Only process vehicles (5) and pedestrians (6)
+                if navsim_class in [5, 6]:
                     # Extract position
                     if isinstance(obj.get("location"), list):
                         obj_x, obj_y, obj_z = obj["location"]
@@ -418,8 +491,16 @@ class Bench2DriveScene:
                         loc = obj.get("location", {})
                         obj_x = loc.get("x", 0.0)
                         obj_y = loc.get("y", 0.0)
-                        
-                        # Convert to ego-centric
+
+                    # Convert to ego-centric using world2ego matrix if available
+                    if world2ego_matrix is not None and "world2ego" in obj:
+                        # Use object's world2ego matrix for transformation
+                        obj_world = np.array([obj_x, obj_y, 0.0, 1.0])
+                        obj_ego = world2ego_matrix @ obj_world
+                        ego_centric_x = obj_ego[0]
+                        ego_centric_y = obj_ego[1]
+                    else:
+                        # Fallback to manual transformation
                         dx = obj_x - ego_x
                         dy = obj_y - ego_y
 
@@ -429,28 +510,43 @@ class Bench2DriveScene:
                         ego_centric_x = dx * cos_theta - dy * sin_theta
                         ego_centric_y = dx * sin_theta + dy * cos_theta
 
-                        # Extract rotation and convert to ego-centric
-                        obj_yaw = -np.radians(obj.get("rotation", {}).get("yaw", 0.0))
-                        ego_centric_yaw = obj_yaw - ego_theta
+                    # Filter by lidar range (32m)
+                    distance = np.sqrt(ego_centric_x**2 + ego_centric_y**2)
+                    if distance > 32.0:
+                        continue
 
-                        # Extract size (use default sizes)
+                    # Extract rotation and convert to ego-centric
+                    if isinstance(obj.get("rotation"), list):
+                        obj_yaw_degrees = obj["rotation"][2]
+                    else:
+                        obj_yaw_degrees = obj.get("rotation", {}).get("yaw", 0.0)
+                    obj_yaw = -np.radians(obj_yaw_degrees)
+                    ego_centric_yaw = obj_yaw - ego_theta
+
+                    # Extract size or use defaults based on type
+                    if navsim_class == 6:  # Pedestrian
+                        length = 0.8  # Pedestrian length
+                        width = 0.6  # Pedestrian width
+                    else:  # Vehicle
                         length = 4.0  # Default car length
-                        width = 1.8   # Default car width
+                        width = 1.8  # Default car width
 
-                        # Store agent state
-                        agent_states[agent_idx] = [
-                            ego_centric_x,
-                            ego_centric_y,
-                            ego_centric_yaw,
-                            length,
-                            width,
-                        ]
-                        agent_labels[agent_idx] = True
-                        agent_idx += 1
-                        
+                    # Store agent state
+                    agent_states[agent_idx] = [
+                        ego_centric_x,
+                        ego_centric_y,
+                        ego_centric_yaw,
+                        length,
+                        width,
+                    ]
+                    agent_labels[agent_idx] = True
+                    agent_types[agent_idx] = navsim_class
+                    agent_idx += 1
+
         elif isinstance(bboxes, dict):
             # Dict format (original expected format)
             for obj_type in ["vehicle", "pedestrian"]:
+                navsim_class = 5 if obj_type == "vehicle" else 6
                 if obj_type in bboxes:
                     for obj in bboxes[obj_type]:
                         if agent_idx >= max_agents:
@@ -467,38 +563,52 @@ class Bench2DriveScene:
                         obj_x = loc.get("x", 0.0)
                         obj_y = loc.get("y", 0.0)
 
-                    # Convert to ego-centric
-                    dx = obj_x - ego_x
-                    dy = obj_y - ego_y
+                        # Convert to ego-centric
+                        dx = obj_x - ego_x
+                        dy = obj_y - ego_y
 
-                    cos_theta = np.cos(-ego_theta)
-                    sin_theta = np.sin(-ego_theta)
+                        cos_theta = np.cos(-ego_theta)
+                        sin_theta = np.sin(-ego_theta)
 
-                    ego_centric_x = dx * cos_theta - dy * sin_theta
-                    ego_centric_y = dx * sin_theta + dy * cos_theta
+                        ego_centric_x = dx * cos_theta - dy * sin_theta
+                        ego_centric_y = dx * sin_theta + dy * cos_theta
 
-                    # Extract rotation and convert to ego-centric
-                    rot = obj.get("rotation", {})
-                    obj_yaw = -np.radians(rot.get("yaw", 0.0))  # Convert to radians CCW
-                    ego_centric_yaw = obj_yaw - ego_theta
+                        # Filter by lidar range (32m)
+                        distance = np.sqrt(ego_centric_x**2 + ego_centric_y**2)
+                        if distance > 32.0:
+                            continue
 
-                    # Extract size (extent in CARLA is half-size)
-                    extent = obj.get("extent", {})
-                    length = 2 * extent.get("x", 2.5)  # Default car length
-                    width = 2 * extent.get("y", 1.0)  # Default car width
+                        # Extract rotation and convert to ego-centric
+                        rot = obj.get("rotation", {})
+                        obj_yaw = -np.radians(rot.get("yaw", 0.0))  # Convert to radians CCW
+                        ego_centric_yaw = obj_yaw - ego_theta
 
-                    # Store agent state
-                    agent_states[agent_idx] = [
-                        ego_centric_x,
-                        ego_centric_y,
-                        ego_centric_yaw,
-                        length,
-                        width,
-                    ]
-                    agent_labels[agent_idx] = True
-                    agent_idx += 1
+                        # Extract size (extent in CARLA is half-size)
+                        extent = obj.get("extent", {})
+                        if navsim_class == 6:  # Pedestrian
+                            length = min(2 * extent.get("x", 0.4), 0.8)  # Cap pedestrian size
+                            width = min(2 * extent.get("y", 0.3), 0.6)
+                        else:
+                            length = 2 * extent.get("x", 2.5)  # Default car length
+                            width = 2 * extent.get("y", 1.0)  # Default car width
 
-        return torch.from_numpy(agent_states), torch.from_numpy(agent_labels)
+                        # Store agent state
+                        agent_states[agent_idx] = [
+                            ego_centric_x,
+                            ego_centric_y,
+                            ego_centric_yaw,
+                            length,
+                            width,
+                        ]
+                        agent_labels[agent_idx] = True
+                        agent_types[agent_idx] = navsim_class
+                        agent_idx += 1
+
+        return (
+            torch.from_numpy(agent_states),
+            torch.from_numpy(agent_labels),
+            torch.from_numpy(agent_types),
+        )
 
     def get_bev_semantic_map(self, frame_idx: int = -1) -> torch.Tensor:
         """
@@ -506,17 +616,20 @@ class Bench2DriveScene:
 
         Returns:
             BEV map tensor [H, W] with semantic labels in native NavSim format
-            
+
         Note: Returns 128×256 format which is the original NavSim BEV semantic format.
-        This rectangular shape matches the frontal RGB camera coverage area and 
-        optimizes for forward-driving scenarios where lateral awareness is more 
+        This rectangular shape matches the frontal RGB camera coverage area and
+        optimizes for forward-driving scenarios where lateral awareness is more
         critical than forward/backward range.
         """
         from navsim.common.bev_semantic_utils import generate_simple_bev_semantic
-        
+
         # Get trajectory for road generation
         trajectory = None
-        if hasattr(self, '_future_trajectory_cache') and frame_idx in self._future_trajectory_cache:
+        if (
+            hasattr(self, "_future_trajectory_cache")
+            and frame_idx in self._future_trajectory_cache
+        ):
             # Use cached trajectory if available
             traj_data = self._future_trajectory_cache[frame_idx]
             trajectory = traj_data  # Already in ego-centric coordinates
@@ -527,88 +640,90 @@ class Bench2DriveScene:
                 for i in range(min(8, len(self.frames) - frame_idx - 1)):
                     future_frame = self._load_annotation(frame_idx + i + 1)
                     if future_frame is not None:
-                        ego_x = future_frame.get('x', 0.0)
-                        ego_y = future_frame.get('y', 0.0)
-                        ego_theta = future_frame.get('theta', 0.0)
-                        
+                        ego_x = future_frame.get("x", 0.0)
+                        ego_y = future_frame.get("y", 0.0)
+                        ego_theta = future_frame.get("theta", 0.0)
+
                         # Convert to ego-centric coordinates
                         current_frame = self._load_annotation(frame_idx)
                         if current_frame is not None:
-                            curr_x = current_frame.get('x', 0.0)
-                            curr_y = current_frame.get('y', 0.0)
-                            curr_theta = current_frame.get('theta', 0.0)
-                            
+                            curr_x = current_frame.get("x", 0.0)
+                            curr_y = current_frame.get("y", 0.0)
+                            curr_theta = current_frame.get("theta", 0.0)
+
                             # Transform to ego-centric
                             dx = ego_x - curr_x
                             dy = ego_y - curr_y
                             cos_theta = np.cos(curr_theta)
                             sin_theta = np.sin(curr_theta)
-                            
+
                             ego_centric_x = dx * cos_theta + dy * sin_theta
                             ego_centric_y = -dx * sin_theta + dy * cos_theta
                             ego_centric_heading = ego_theta - curr_theta
-                            
-                            future_positions.append([ego_centric_x, ego_centric_y, ego_centric_heading])
-                
+
+                            future_positions.append(
+                                [ego_centric_x, ego_centric_y, ego_centric_heading]
+                            )
+
                 if future_positions:
                     trajectory = np.array(future_positions)
             except:
                 # If trajectory generation fails, use None
                 trajectory = None
-        
+
         # Get agents for vehicle generation
-        agents, labels = self.get_agents(frame_idx)
+        agents, labels, agent_types = self.get_agents(frame_idx)
         if isinstance(agents, torch.Tensor):
             agents = agents.numpy()
         if isinstance(labels, torch.Tensor):
             labels = labels.numpy()
-        
+
         # Check if cached BEV exists
         map_bev = None
-        if hasattr(self.config, 'bev_cache_dir') and self.config.bev_cache_dir:
+        if hasattr(self.config, "bev_cache_dir") and self.config.bev_cache_dir:
             cache_dir = Path(self.config.bev_cache_dir)
-            scenario_name = self.scene_info['scenario']  # Get scenario name
-            frame_number = self.frames[frame_idx].stem.split('.')[0]
+            scenario_name = self.scene_info["scenario"]  # Get scenario name
+            frame_number = self.frames[frame_idx].stem.split(".")[0]
             cache_path = cache_dir / scenario_name / f"{frame_number}.npz"
-            
+
             if cache_path.exists():
                 try:
                     cached_data = np.load(cache_path)
                     # Use front_bev if available, otherwise use full_bev
-                    if 'front_bev' in cached_data:
-                        map_bev = cached_data['front_bev']
-                    elif 'full_bev' in cached_data:
+                    if "front_bev" in cached_data:
+                        map_bev = cached_data["front_bev"]
+                    elif "full_bev" in cached_data:
                         # Extract front half
-                        full_bev = cached_data['full_bev']
+                        full_bev = cached_data["full_bev"]
                         map_bev = full_bev[:128, :]  # Front half
                     print(f"Loaded cached BEV from {cache_path}")
                 except Exception as e:
                     print(f"Failed to load cached BEV: {e}")
-        
+
         # If no cached BEV, try to generate from HD map if available
-        if map_bev is None and hasattr(self.config, 'map_dir') and self.config.map_dir:
+        if map_bev is None and hasattr(self.config, "map_dir") and self.config.map_dir:
             try:
                 from navsim.common.bev_map_utils import load_map_data, generate_bev_from_map
-                
+
                 # Extract town name from scenario
-                parts = self.scene_info['scenario'].split('_')
+                parts = self.scene_info["scenario"].split("_")
                 town_name = None
                 for part in parts:
-                    if part.startswith('Town'):
+                    if part.startswith("Town"):
                         town_name = part
                         break
-                
+
                 if town_name:
                     map_path = Path(self.config.map_dir) / f"{town_name}_HD_map.npz"
                     if map_path.exists():
                         # Load map data
                         map_data = load_map_data(map_path)
-                        
+
                         # Get world2ego transform
                         anno = self._load_annotation(frame_idx)
-                        if anno and 'bounding_boxes' in anno:
-                            world2ego = np.array(anno['bounding_boxes'][0]['world2ego'])
-                            
+                        if anno and "bounding_boxes" in anno:
+                            world2ego = np.array(anno["bounding_boxes"][0]["world2ego"])
+
                             # Generate BEV from map
                             map_bev = generate_bev_from_map(
                                 map_data=map_data,
@@ -617,23 +732,26 @@ class Bench2DriveScene:
                                 bev_width=BEV_SEMANTIC_WIDTH,
                                 resolution=0.25,
                                 lane_thickness=0.4,
-                                max_distance=50.0
+                                max_distance=50.0,
                             )
                             print(f"Generated BEV from HD map for {town_name}")
             except Exception as e:
                 print(f"Failed to generate BEV from map: {e}")
-        
+
         # Generate BEV semantic map using the correct dataset-level approach
         bev_map = generate_simple_bev_semantic(
             trajectory=trajectory if map_bev is None else None,  # Only use trajectory if no map
             agents=agents,
             agent_labels=labels,
+            agent_types=(
+                agent_types if isinstance(agent_types, np.ndarray) else agent_types.numpy()
+            ),
             bev_height=BEV_SEMANTIC_HEIGHT,
             bev_width=BEV_SEMANTIC_WIDTH,
             resolution=0.25,  # 0.25 meters per pixel
-            map_bev=map_bev  # Use map-based BEV if available
+            map_bev=map_bev,  # Use map-based BEV if available
         )
-        
+
         return torch.from_numpy(bev_map).float()
 
     def __len__(self) -> int:

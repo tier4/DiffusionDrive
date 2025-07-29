@@ -41,7 +41,6 @@ from navsim.common.bench2drive_constants import (
     BENCH2DRIVE_LIDAR_SIZE,
     DIFFUSIONDRIVE_LIDAR_SIZE,
     LIDAR_PIXELS_PER_METER,
-    LIDAR_NORMALIZATION_FACTOR,
 )
 
 
@@ -90,32 +89,36 @@ class Bench2DriveFeatureBuilder(AbstractFeatureBuilder):
         self._validate_features(features)
 
         return features
-    
+
     def _validate_features(self, features: Dict[str, torch.Tensor]) -> None:
         """
         Validate features to ensure they don't contain NaN/Inf values.
-        
+
         Args:
             features: Dictionary of feature tensors
-            
+
         Raises:
             ValueError: If any feature contains invalid values
         """
         for name, tensor in features.items():
             if torch.isnan(tensor).any():
                 raise ValueError(f"Feature '{name}' contains NaN values!")
-            
+
             if torch.isinf(tensor).any():
                 raise ValueError(f"Feature '{name}' contains Inf values!")
-            
+
             # Check specific ranges for known features
             if name == "camera_feature":
                 if tensor.min() < -0.1 or tensor.max() > 1.1:
-                    print(f"Warning: Camera feature has values outside [0,1]: min={tensor.min():.3f}, max={tensor.max():.3f}")
-            
+                    print(
+                        f"Warning: Camera feature has values outside [0,1]: min={tensor.min():.3f}, max={tensor.max():.3f}"
+                    )
+
             elif name == "lidar_feature":
                 if tensor.min() < -0.1 or tensor.max() > 1.1:
-                    print(f"Warning: LiDAR feature has values outside [0,1]: min={tensor.min():.3f}, max={tensor.max():.3f}")
+                    print(
+                        f"Warning: LiDAR feature has values outside [0,1]: min={tensor.min():.3f}, max={tensor.max():.3f}"
+                    )
 
     def _get_camera_feature(self, cameras: List[any]) -> torch.Tensor:
         """
@@ -182,7 +185,7 @@ class Bench2DriveFeatureBuilder(AbstractFeatureBuilder):
 
         # Convert to tensor and change to CHW format
         stitched = torch.from_numpy(stitched_resized).permute(2, 0, 1).float()
-        
+
         # CRITICAL: Normalize to [0, 1] range to match NavSim
         # NavSim uses transforms.ToTensor() which divides by 255
         stitched = stitched / 255.0
@@ -192,7 +195,7 @@ class Bench2DriveFeatureBuilder(AbstractFeatureBuilder):
     def _get_lidar_feature(self, lidars: List[Any]) -> torch.Tensor:
         """
         Process LiDAR data into BEV histogram.
-        
+
         Note: Bench2Drive provides 85m x 85m LiDAR coverage, but DiffusionDrive
         expects 64m x 64m. We first process the full 85m range to preserve
         maximum information, then resize to 64m (256x256) for compatibility.
@@ -209,8 +212,7 @@ class Bench2DriveFeatureBuilder(AbstractFeatureBuilder):
         if len(current_lidar) == 0:
             # Return empty BEV if no points
             return torch.zeros(
-                (1, DIFFUSIONDRIVE_LIDAR_SIZE, DIFFUSIONDRIVE_LIDAR_SIZE),
-                dtype=torch.float32
+                (1, DIFFUSIONDRIVE_LIDAR_SIZE, DIFFUSIONDRIVE_LIDAR_SIZE), dtype=torch.float32
             )
 
         # Extract x, y coordinates (keep in CARLA coordinates)
@@ -219,15 +221,21 @@ class Bench2DriveFeatureBuilder(AbstractFeatureBuilder):
         # Step 1: Process at Bench2Drive's native 85m x 85m resolution
         # This preserves all the LiDAR information from the original data
         pixel_coords_full = np.zeros_like(points_xy)
-        pixel_coords_full[:, 0] = (points_xy[:, 0] + BENCH2DRIVE_LIDAR_RANGE_M / 2) * LIDAR_PIXELS_PER_METER
-        pixel_coords_full[:, 1] = (points_xy[:, 1] + BENCH2DRIVE_LIDAR_RANGE_M / 2) * LIDAR_PIXELS_PER_METER
+        pixel_coords_full[:, 0] = (
+            points_xy[:, 0] + BENCH2DRIVE_LIDAR_RANGE_M / 2
+        ) * LIDAR_PIXELS_PER_METER
+        pixel_coords_full[:, 1] = (
+            points_xy[:, 1] + BENCH2DRIVE_LIDAR_RANGE_M / 2
+        ) * LIDAR_PIXELS_PER_METER
 
         # Clip to valid range for full resolution
-        pixel_coords_full = np.clip(pixel_coords_full, 0, BENCH2DRIVE_LIDAR_SIZE - 1).astype(np.int32)
+        pixel_coords_full = np.clip(pixel_coords_full, 0, BENCH2DRIVE_LIDAR_SIZE - 1).astype(
+            np.int32
+        )
 
         # Create histogram at full resolution (340x340 for 85m at 4 pixels/meter)
         hist_full = np.zeros((BENCH2DRIVE_LIDAR_SIZE, BENCH2DRIVE_LIDAR_SIZE), dtype=np.float32)
-        
+
         # Count points in each pixel using vectorized operation
         np.add.at(hist_full, (pixel_coords_full[:, 1], pixel_coords_full[:, 0]), 1)
 
@@ -235,11 +243,10 @@ class Bench2DriveFeatureBuilder(AbstractFeatureBuilder):
         # Using PIL for high-quality downsampling with LANCZOS filter
         hist_image = Image.fromarray(hist_full)
         hist_resized = hist_image.resize(
-            (DIFFUSIONDRIVE_LIDAR_SIZE, DIFFUSIONDRIVE_LIDAR_SIZE), 
-            Image.LANCZOS
+            (DIFFUSIONDRIVE_LIDAR_SIZE, DIFFUSIONDRIVE_LIDAR_SIZE), Image.LANCZOS
         )
         hist = np.array(hist_resized, dtype=np.float32)
-        
+
         # Ensure non-negative values after resize (LANCZOS can produce small negative values)
         hist = np.maximum(hist, 0.0)
 
@@ -326,9 +333,10 @@ class Bench2DriveTargetBuilder(AbstractTargetBuilder):
         targets["trajectory"] = scene.get_future_trajectory()
 
         # Get agent states and labels
-        agent_states, agent_labels = scene.get_agents()
+        agent_states, agent_labels, agent_types = scene.get_agents()
         targets["agent_states"] = agent_states
         targets["agent_labels"] = agent_labels
+        # Note: agent_types can be used for improved BEV rendering if needed
 
         # Get BEV semantic map
         targets["bev_semantic_map"] = scene.get_bev_semantic_map()
