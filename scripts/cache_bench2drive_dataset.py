@@ -214,11 +214,17 @@ def cache_bench2drive_dataset(
     logger.info(f"Average time per scene: {elapsed_time / len(all_tokens):.2f} seconds")
 
     if failed_scenes:
-        logger.warning(f"Failed to cache {len(failed_scenes)} scenes:")
+        logger.error(f"Failed to cache {len(failed_scenes)} scenes:")
         for token, error in failed_scenes[:10]:  # Show first 10 errors
-            logger.warning(f"  {token}: {error}")
+            logger.error(f"  {token}: {error}")
         if len(failed_scenes) > 10:
-            logger.warning(f"  ... and {len(failed_scenes) - 10} more errors")
+            logger.error(f"  ... and {len(failed_scenes) - 10} more errors")
+        
+        # Raise exception to fail the process
+        raise RuntimeError(
+            f"Dataset caching failed: {len(failed_scenes)} scenes could not be processed. "
+            f"See errors above for details."
+        )
 
 
 def main():
@@ -243,8 +249,8 @@ def main():
     parser.add_argument(
         "--bev-cache-dir",
         type=Path,
-        default=Path("/workspace/Bench2Drive-mini-full_bev_cache"),
-        help="Path to pre-generated BEV cache",
+        default=None,
+        help="Path to pre-generated BEV cache (optional)",
     )
     parser.add_argument(
         "--map-dir", type=Path, default=Path("/workspace/Bench2Drive-Map"), help="Path to HD maps"
@@ -266,9 +272,20 @@ def main():
     if not args.data_root.exists():
         raise FileNotFoundError(f"Data root not found: {args.data_root}")
 
-    if args.bev_cache_dir and not args.bev_cache_dir.exists():
-        logger.warning(f"BEV cache directory not found: {args.bev_cache_dir}")
-        args.bev_cache_dir = None
+    # Check if BEV cache directory exists when provided
+    if args.bev_cache_dir:
+        if not args.bev_cache_dir.exists():
+            raise FileNotFoundError(
+                f"BEV cache directory not found: {args.bev_cache_dir}\n"
+                f"Please either:\n"
+                f"1. Run generate_bev_cache.py first to create the BEV cache\n" 
+                f"2. Remove the --bev-cache-dir argument to skip using BEV cache"
+            )
+    else:
+        logger.warning(
+            "No BEV cache directory provided. BEV maps will be generated on-the-fly, "
+            "which may be slower. Consider running generate_bev_cache.py first."
+        )
 
     if args.map_dir and not args.map_dir.exists():
         logger.warning(f"Map directory not found: {args.map_dir}")

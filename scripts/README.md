@@ -50,6 +50,26 @@ scripts/
     --lr-list "1e-4,2e-4,4e-4,8e-4"
 ```
 
+3. **Bench2Drive batch experiments:**
+
+```bash
+# Basic Bench2Drive batch sweep with default settings
+./scripts/training/batch_experiments_bench2drive.sh
+
+# Custom Bench2Drive experiment with specific parameters
+./scripts/training/batch_experiments_bench2drive.sh \
+    --batch-sizes "32,64,128" \
+    --epochs 500 \
+    --base-name bench2drive_test \
+    --lr 5e-5
+
+# Bench2Drive with different learning rates for each batch size
+./scripts/training/batch_experiments_bench2drive.sh \
+    --batch-sizes "32,64,128" \
+    --lr-list "5e-5,4e-5,3e-5" \
+    --base-name bench2drive_lr_sweep
+```
+
 ### Evaluation
 
 1. **Evaluate single checkpoint:**
@@ -92,14 +112,35 @@ scripts/
 - `--lr`: Single learning rate for all experiments (default: uses agent's configured LR)
 - `--lr-list`: Comma-separated learning rates for each batch size (default: uses agent's configured LR for all)
 
+**Automatic Configuration:**
+- Workers: Automatically calculated as `num_gpus × 8`
+
+### batch_experiments_bench2drive.sh
+
+- `--batch-sizes`: Comma-separated list of batch sizes (default: 32,64,128,256)
+- `--epochs`: Maximum epochs for all experiments (default: 1000)
+- `--base-name`: Base name for experiments (default: bench2drive_batch_sweep)
+- `--gpus`: GPU devices as comma-separated list (default: 0,1,2,3,4,5,6,7)
+- `--lr`: Single learning rate for all experiments (default: 5e-5)
+- `--lr-list`: Comma-separated learning rates for each batch size (default: 5e-5 for all)
+
+**Fixed Configuration:**
+- Workers: Automatically calculated as `num_gpus × 8`
+- Config: `bench2drive_training`
+- Agent: `diffusiondrive_agent_extended`
+- Dataset: `bench2drive`
+
 **Note**: `--lr` and `--lr-list` are mutually exclusive. When using `--lr-list`, provide exactly one learning rate per batch size.
 
-**Experiment Naming**: The script now includes the learning rate in experiment names:
+**Experiment Naming**: Both batch experiment scripts include the learning rate in experiment names:
+
 - Format: `{base_name}_bs{batch_size}_lr{learning_rate}_ep{epochs}`
 - Learning rate formatting in names:
   - Scientific notation: `1e-4` → `1e4`
   - Decimal notation: `0.001` → `0p001`
-- Default: When no custom LR is specified, uses `lr6e4` (the default for diffusiondrive_agent)
+- Default naming:
+  - `batch_experiments.sh`: Uses `lr6e4` (the default for diffusiondrive_agent)
+  - `batch_experiments_bench2drive.sh`: Uses `lr5e5` (the default for Bench2Drive)
 
 ### eval.sh
 
@@ -124,7 +165,14 @@ Before running any scripts, ensure these environment variables are set:
 
 The training scripts now support learning rate override via the `--lr` flag. This allows you to experiment with different learning rates without modifying the agent configuration files.
 
-**Note**: When training on multiple GPUs with DDP (DistributedDataParallel), the batch size specified is per GPU. For example, with `--batch-size 64` on 8 GPUs, the effective batch size is 512 (64 × 8).
+### Dataset-Specific Defaults
+
+- **Standard NavSim**: Default learning rate is `6e-4` for `diffusiondrive_agent`
+- **Bench2Drive**: Default learning rate is `5e-5` for `diffusiondrive_agent_extended`
+
+**Note**: 
+- When training on multiple GPUs with DDP (DistributedDataParallel), the batch size specified is per GPU. For example, with `--batch-size 64` on 8 GPUs, the effective batch size is 512 (64 × 8).
+- Workers are automatically calculated as `num_gpus × 8` for optimal data loading performance.
 
 ## Logging
 

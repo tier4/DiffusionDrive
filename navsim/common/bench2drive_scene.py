@@ -699,6 +699,12 @@ class Bench2DriveScene:
                     print(f"Loaded cached BEV from {cache_path}")
                 except Exception as e:
                     print(f"Failed to load cached BEV: {e}")
+            else:
+                # If BEV cache directory is provided but file doesn't exist, raise error
+                raise FileNotFoundError(
+                    f"BEV cache file not found: {cache_path}\n"
+                    f"Please run generate_bev_cache.py first to generate BEV maps for scenario '{scenario_name}'"
+                )
 
         # If no cached BEV, try to generate from HD map if available
         if map_bev is None and hasattr(self.config, "map_dir") and self.config.map_dir:

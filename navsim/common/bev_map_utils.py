@@ -11,7 +11,10 @@ The module provides two implementations:
 
 import numpy as np
 import cv2
-from typing import Dict, List, Tuple, Optional, Union
+from typing import Dict, List, Tuple, Optional, Union, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from typing import Any
 from pathlib import Path
 import logging
 from scipy.spatial import KDTree
@@ -235,7 +238,7 @@ def draw_lane_on_bev(
     points = lane_points[:, [1, 0]].astype(np.int32)
 
     cv2.polylines(
-        bev_map, [points], isClosed=False, color=semantic_class, thickness=thickness_pixels
+        bev_map, [points], isClosed=False, color=float(semantic_class), thickness=thickness_pixels
     )
 
     return bev_map
@@ -269,135 +272,15 @@ def draw_trigger_on_bev(
     points = bottom_points[:, [1, 0]].astype(np.int32)
 
     # Draw filled polygon
-    cv2.fillPoly(bev_map, [points], semantic_class)
+    cv2.fillPoly(bev_map, [points], float(semantic_class))
 
     return bev_map
 
 
-def generate_bev_from_map(
-    map_data: Dict,
-    world2ego: np.ndarray,
-    bev_height: int = 128,
-    bev_width: int = 256,
-    resolution: float = 0.25,
-    coverage_behind: float = 0.0,
-    lane_thickness: float = 0.3,
-    max_distance: float = 100.0,
-) -> np.ndarray:
-    """
-    Generate BEV semantic map from vectorized map data.
-
-    Args:
-        map_data: Dictionary containing road data
-        world2ego: 4x4 transformation matrix from world to ego
-        bev_height: Height of BEV map in pixels
-        bev_width: Width of BEV map in pixels
-        resolution: Meters per pixel
-        coverage_behind: Coverage behind ego in meters
-        lane_thickness: Lane line thickness in meters
-        max_distance: Maximum distance to consider map elements
-
-    Returns:
-        BEV semantic map with shape (H, W) and values 0-6
-    """
-    # Initialize BEV map
-    bev_map = np.zeros((bev_height, bev_width), dtype=np.float32)
-
-    # Process each road
-    for road_id, road_data in map_data.items():
-        # Process lanes
-        for lane_id, lane_segments in road_data.items():
-            if lane_id == "Trigger_Volumes":
-                continue
-
-            if not isinstance(lane_segments, list):
-                continue
-
-            # Process each segment
-            for segment in lane_segments:
-                try:
-                    # Extract points and type
-                    points_world, lane_type = extract_lane_points(segment)
-
-                    if len(points_world) == 0:
-                        continue
-
-                    # Transform to ego coordinates
-                    points_ego = transform_points_to_ego(points_world, world2ego)
-
-                    # Filter by distance
-                    distances = np.linalg.norm(points_ego[:, :2], axis=1)
-                    valid_dist = distances < max_distance
-                    points_ego = points_ego[valid_dist]
-
-                    if len(points_ego) == 0:
-                        continue
-
-                    # Filter points in BEV range
-                    points_filtered, _ = filter_points_in_range(
-                        points_ego, bev_height, bev_width, resolution, coverage_behind
-                    )
-
-                    if len(points_filtered) < 2:
-                        continue
-
-                    # Convert to pixel coordinates
-                    pixels = ego_to_bev_pixels(
-                        points_filtered, bev_height, bev_width, resolution, coverage_behind
-                    )
-
-                    # Draw lane
-                    bev_map = draw_lane_on_bev(
-                        bev_map, pixels, lane_type, resolution, lane_thickness
-                    )
-
-                except Exception as e:
-                    logger.debug(f"Error processing lane {lane_id} in road {road_id}: {e}")
-                    continue
-
-        # Process trigger volumes
-        if "Trigger_Volumes" in road_data:
-            for trigger in road_data["Trigger_Volumes"]:
-                try:
-                    # Extract points and type
-                    points_world, trigger_type = extract_trigger_points(trigger)
-
-                    # Transform to ego coordinates
-                    points_ego = transform_points_to_ego(points_world, world2ego)
-
-                    # Check distance (use centroid)
-                    centroid = points_ego.mean(axis=0)
-                    if np.linalg.norm(centroid[:2]) > max_distance:
-                        continue
-
-                    # Convert to pixel coordinates
-                    pixels = ego_to_bev_pixels(
-                        points_ego, bev_height, bev_width, resolution, coverage_behind
-                    )
-
-                    # Check if any points are in view
-                    in_bounds = (
-                        (pixels[:, 0] >= 0)
-                        & (pixels[:, 0] < bev_height)
-                        & (pixels[:, 1] >= 0)
-                        & (pixels[:, 1] < bev_width)
-                    )
-
-                    if not np.any(in_bounds):
-                        continue
-
-                    # Draw trigger
-                    bev_map = draw_trigger_on_bev(bev_map, pixels, trigger_type)
-
-                except Exception as e:
-                    logger.debug(f"Error processing trigger in road {road_id}: {e}")
-                    continue
-
-    return bev_map
 
 
 def generate_full_bev_from_map(
-    map_data: Union[Dict, MapProcessor],
+    map_data: Union[Dict, 'MapProcessor'],
     world2ego: np.ndarray,
     full_height: int = 256,
     full_width: int = 256,

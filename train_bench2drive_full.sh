@@ -2,7 +2,7 @@
 
 # Use the clean extended configuration that doesn't modify original code
 ./scripts/training/train.sh \
-    --name "bench2drive_Base_clean_test0" \
+    --name "bench2drive_Base_test0" \
     --epochs 1000 \
     --batch-size 64 \
     --workers 32 \

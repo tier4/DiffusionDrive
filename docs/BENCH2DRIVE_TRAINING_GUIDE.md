@@ -16,7 +16,7 @@ This guide shows how to train DiffusionDrive on Bench2Drive dataset.
 python3 scripts/generate_bev_cache.py \
     --data-root /workspace/Bench2Drive-mini \
     --map-dir /workspace/Bench2Drive-Map \
-    --output-dir /workspace/navsim_workspace/cache/bench2drive_mini_bev_cache \
+    --output-dir /workspace/navsim_workspace/cache/Bench2Drive-mini_full_bev_cache \
     --full-bev \
     --workers 4
 ```
@@ -25,11 +25,10 @@ python3 scripts/generate_bev_cache.py \
 
 ```bash
 python3 scripts/cache_bench2drive_dataset.py \
-    --dataset-root /workspace/Bench2Drive-mini \
-    --cache-path /workspace/navsim_workspace/cache/bench2drive_Mini_cache \
-    --bev-cache-dir /workspace/Bench2Drive-mini-full_bev_cache \
+    --data-root /workspace/Bench2Drive-mini \
+    --cache-path /workspace/navsim_workspace/cache/Bench2Drive-mini_training_cache \
+    --bev-cache-dir /workspace/navsim_workspace/cache/Bench2Drive-mini_full_bev_cache \
     --map-dir /workspace/Bench2Drive-Map \
-    --split Mini \
     --num-workers 8
 ```
 
@@ -37,7 +36,7 @@ python3 scripts/cache_bench2drive_dataset.py \
 
 ```bash
 python3 scripts/generate_trajectory_anchors.py \
-    --cache-path /workspace/navsim_workspace/cache/bench2drive_Mini_cache \
+    --cache-path /workspace/navsim_workspace/cache/Bench2Drive-Base_training_cache \
     --output-path ./download/kmeans_bench2drive_traj_20.npy \
     --dataset-type bench2drive
 ```
@@ -50,6 +49,7 @@ python3 scripts/generate_trajectory_anchors.py \
 ```
 
 Or manually:
+
 ```bash
 python3 navsim/planning/script/run_bench2drive_training.py \
     agent=diffusiondrive_agent_extended \
@@ -60,13 +60,14 @@ python3 navsim/planning/script/run_bench2drive_training.py \
 ## Key Configuration
 
 - Use `diffusiondrive_agent_extended` agent
-- Set `dataset_type="bench2drive"` 
+- Set `dataset_type="bench2drive"`
 - Use Bench2Drive-specific anchors
 - BEV generation is REQUIRED
 
 ## Debugging Tips
 
 If NaN losses occur:
+
 1. Check training logs for "WARNING: Invalid loss detected"
 2. Verify correct anchors are loaded
 3. Run analysis scripts to check cached data
@@ -75,6 +76,7 @@ If NaN losses occur:
 ## Known Issues Under Investigation
 
 From cache analysis:
+
 - Status feature minimum value: -26.97 (suspicious)
 - Heading range: ±0.110 (possibly clipped)
 - Zero agent states and labels
