@@ -4,18 +4,12 @@ Generate k-means plan anchors from Bench2Drive dataset.
 This creates trajectory anchors specific to Bench2Drive data distribution.
 """
 
+# Fix OpenBLAS threading issue on high-core machines
 import os
-import sys
-import argparse
-import numpy as np
-from pathlib import Path
-from tqdm import tqdm
-from sklearn.cluster import KMeans
-import json
-
-# Add project root to path
-project_root = Path(__file__).parent.parent
-sys.path.append(str(project_root))
+os.environ['OPENBLAS_NUM_THREADS'] = '64'
+os.environ['GOTO_NUM_THREADS'] = '64'
+os.environ['OMP_NUM_THREADS'] = '64'
+os.environ['MKL_NUM_THREADS'] = '64'
 
 from navsim.planning.training.dataset import CacheOnlyDataset
 from navsim.agents.diffusiondrive.transfuser_config import TransfuserConfig
@@ -23,6 +17,13 @@ from navsim.agents.diffusiondrive.transfuser_features_b2d import (
     Bench2DriveFeatureBuilder,
     Bench2DriveTargetBuilder,
 )
+import os
+import sys
+import argparse
+import numpy as np
+from tqdm import tqdm
+from sklearn.cluster import KMeans
+import json
 
 
 def collect_trajectories(cache_path: str, num_samples: int = 5000):
@@ -51,7 +52,10 @@ def collect_trajectories(cache_path: str, num_samples: int = 5000):
     )
 
     print(f"Dataset size: {len(dataset)}")
-    num_samples = min(num_samples, len(dataset))
+    if num_samples == -1:
+        num_samples = len(dataset)
+    else:
+        num_samples = min(num_samples, len(dataset))
 
     # Collect trajectories
     trajectories = []
@@ -65,15 +69,46 @@ def collect_trajectories(cache_path: str, num_samples: int = 5000):
             # Extract only x, y coordinates
             xy_trajectory = trajectory[:, :2].numpy()  # Shape: [8, 2]
             trajectories.append(xy_trajectory)
+            
+            # Also collect heading for normalization statistics
+            if i == 0:
+                all_headings = [trajectory[:, 2].numpy()]  # Shape: [8]
+            else:
+                all_headings.append(trajectory[:, 2].numpy())
 
         except Exception as e:
             print(f"\nError processing sample {i}: {e}")
             continue
 
     trajectories = np.array(trajectories)  # Shape: (N, 8, 2)
+    all_headings = np.array(all_headings)  # Shape: (N, 8)
     print(f"\nCollected {len(trajectories)} valid trajectories")
 
-    return trajectories
+    # Compute normalization statistics
+    x_min, x_max = trajectories[:, :, 0].min(), trajectories[:, :, 0].max()
+    y_min, y_max = trajectories[:, :, 1].min(), trajectories[:, :, 1].max() 
+    h_min, h_max = all_headings.min(), all_headings.max()
+    
+    normalization_params = {
+        "x_offset": float(-x_min),
+        "x_scale": float(x_max - x_min),
+        "y_offset": float(-y_min), 
+        "y_scale": float(y_max - y_min),
+        "heading_offset": float(-h_min),
+        "heading_scale": float(h_max - h_min),
+        "raw_ranges": {
+            "x_range": [float(x_min), float(x_max)],
+            "y_range": [float(y_min), float(y_max)],
+            "heading_range": [float(h_min), float(h_max)]
+        }
+    }
+    
+    print(f"\nNormalization parameters computed:")
+    print(f"  X: range=[{x_min:.3f}, {x_max:.3f}] -> offset={normalization_params['x_offset']:.3f}, scale={normalization_params['x_scale']:.3f}")
+    print(f"  Y: range=[{y_min:.3f}, {y_max:.3f}] -> offset={normalization_params['y_offset']:.3f}, scale={normalization_params['y_scale']:.3f}")
+    print(f"  Heading: range=[{h_min:.3f}, {h_max:.3f}] -> offset={normalization_params['heading_offset']:.3f}, scale={normalization_params['heading_scale']:.3f}")
+
+    return trajectories, normalization_params
 
 
 def generate_kmeans_anchors(trajectories: np.ndarray, num_clusters: int = 20):
@@ -94,7 +129,7 @@ def generate_kmeans_anchors(trajectories: np.ndarray, num_clusters: int = 20):
     trajectories_flat = trajectories.reshape(N, -1)
 
     # Print statistics
-    print(f"Trajectory statistics before clustering:")
+    print("Trajectory statistics before clustering:")
     print(f"  Shape: {trajectories.shape}")
     print(f"  X range: [{trajectories[:, :, 0].min():.3f}, {trajectories[:, :, 0].max():.3f}]")
     print(f"  Y range: [{trajectories[:, :, 1].min():.3f}, {trajectories[:, :, 1].max():.3f}]")
@@ -107,7 +142,7 @@ def generate_kmeans_anchors(trajectories: np.ndarray, num_clusters: int = 20):
     anchors = kmeans.cluster_centers_.reshape(num_clusters, timesteps, coords)
 
     # Print anchor statistics
-    print(f"\nGenerated anchor statistics:")
+    print("\nGenerated anchor statistics:")
     print(f"  Shape: {anchors.shape}")
     print(f"  X range: [{anchors[:, :, 0].min():.3f}, {anchors[:, :, 0].max():.3f}]")
     print(f"  Y range: [{anchors[:, :, 1].min():.3f}, {anchors[:, :, 1].max():.3f}]")
@@ -146,7 +181,7 @@ def compare_with_navsim_anchors(b2d_anchors: np.ndarray, navsim_anchor_path: str
         print("COMPARISON WITH NAVSIM ANCHORS")
         print("=" * 60)
 
-        print(f"\nNavSim anchors:")
+        print("\nNavSim anchors:")
         print(f"  Shape: {navsim_anchors.shape}")
         print(
             f"  X range: [{navsim_anchors[:, :, 0].min():.3f}, {navsim_anchors[:, :, 0].max():.3f}]"
@@ -155,7 +190,7 @@ def compare_with_navsim_anchors(b2d_anchors: np.ndarray, navsim_anchor_path: str
             f"  Y range: [{navsim_anchors[:, :, 1].min():.3f}, {navsim_anchors[:, :, 1].max():.3f}]"
         )
 
-        print(f"\nBench2Drive anchors:")
+        print("\nBench2Drive anchors:")
         print(f"  Shape: {b2d_anchors.shape}")
         print(f"  X range: [{b2d_anchors[:, :, 0].min():.3f}, {b2d_anchors[:, :, 0].max():.3f}]")
         print(f"  Y range: [{b2d_anchors[:, :, 1].min():.3f}, {b2d_anchors[:, :, 1].max():.3f}]")
@@ -166,7 +201,7 @@ def compare_with_navsim_anchors(b2d_anchors: np.ndarray, navsim_anchor_path: str
         b2d_x_range = b2d_anchors[:, :, 0].max() - b2d_anchors[:, :, 0].min()
         b2d_y_range = b2d_anchors[:, :, 1].max() - b2d_anchors[:, :, 1].min()
 
-        print(f"\nScale comparison:")
+        print("\nScale comparison:")
         print(f"  X scale ratio (B2D/NavSim): {b2d_x_range/navsim_x_range:.2f}")
         print(f"  Y scale ratio (B2D/NavSim): {b2d_y_range/navsim_y_range:.2f}")
 
@@ -183,8 +218,8 @@ def main():
     parser.add_argument(
         "--num-samples",
         type=int,
-        default=5000,
-        help="Number of samples to use for k-means (default: 5000)",
+        default=-1,
+        help="Number of samples to use for k-means. If -1, use all samples (default: -1)",
     )
     parser.add_argument(
         "--num-clusters", type=int, default=20, help="Number of k-means clusters (default: 20)"
@@ -203,7 +238,7 @@ def main():
         sys.exit(1)
 
     # Collect trajectories
-    trajectories = collect_trajectories(args.cache_path, args.num_samples)
+    trajectories, normalization_params = collect_trajectories(args.cache_path, args.num_samples)
 
     # Generate k-means anchors
     anchors = generate_kmeans_anchors(trajectories, args.num_clusters)
@@ -222,8 +257,11 @@ def main():
         "num_clusters": args.num_clusters,
         "cache_path": args.cache_path,
         "anchor_shape": list(anchors.shape),
-        "x_range": [float(anchors[:, :, 0].min()), float(anchors[:, :, 0].max())],
-        "y_range": [float(anchors[:, :, 1].min()), float(anchors[:, :, 1].max())],
+        "anchor_ranges": {
+            "x_range": [float(anchors[:, :, 0].min()), float(anchors[:, :, 0].max())],
+            "y_range": [float(anchors[:, :, 1].min()), float(anchors[:, :, 1].max())],
+        },
+        "normalization_params": normalization_params
     }
 
     metadata_path = args.output_path.replace(".npy", "_metadata.json")

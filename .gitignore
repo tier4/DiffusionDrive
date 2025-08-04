@@ -134,3 +134,38 @@ download/openscene-v1.1/
 # Generated analysis outputs
 download/*_analysis.png
 download/*_metadata.json
+
+# Recently added large test data files
+# TODO: Remove these entries once B2D support is complete
+tests/test_data/bench2drive_sample/DynamicObjectCrossing_Town02_Route13_Weather6/anno/00030.json.gz
+tests/test_data/bench2drive_sample/DynamicObjectCrossing_Town02_Route13_Weather6/anno/00031.json.gz
+tests/test_data/bench2drive_sample/DynamicObjectCrossing_Town02_Route13_Weather6/anno/00032.json.gz
+tests/test_data/bench2drive_sample/DynamicObjectCrossing_Town02_Route13_Weather6/anno/00033.json.gz
+tests/test_data/bench2drive_sample/DynamicObjectCrossing_Town02_Route13_Weather6/anno/00034.json.gz
+tests/test_data/bench2drive_sample/DynamicObjectCrossing_Town02_Route13_Weather6/anno/00035.json.gz
+tests/test_data/bench2drive_sample/DynamicObjectCrossing_Town02_Route13_Weather6/anno/00036.json.gz
+tests/test_data/bench2drive_sample/DynamicObjectCrossing_Town02_Route13_Weather6/anno/00037.json.gz
+tests/test_data/bench2drive_sample/DynamicObjectCrossing_Town02_Route13_Weather6/anno/00038.json.gz
+tests/test_data/bench2drive_sample/DynamicObjectCrossing_Town02_Route13_Weather6/anno/00039.json.gz
+tests/test_data/bench2drive_sample/DynamicObjectCrossing_Town02_Route13_Weather6/anno/00040.json.gz
+tests/test_data/bench2drive_sample/DynamicObjectCrossing_Town02_Route13_Weather6/anno/00041.json.gz
+tests/test_data/bench2drive_sample/DynamicObjectCrossing_Town02_Route13_Weather6/anno/00042.json.gz
+tests/test_data/bench2drive_sample/DynamicObjectCrossing_Town02_Route13_Weather6/anno/00043.json.gz
+tests/test_data/bench2drive_sample/DynamicObjectCrossing_Town02_Route13_Weather6/anno/00044.json.gz
+tests/test_data/bench2drive_sample/DynamicObjectCrossing_Town02_Route13_Weather6/anno/00045.json.gz
+tests/test_data/bench2drive_sample/DynamicObjectCrossing_Town02_Route13_Weather6/anno/00046.json.gz
+tests/test_data/bench2drive_sample/DynamicObjectCrossing_Town02_Route13_Weather6/anno/00047.json.gz
+tests/test_data/bench2drive_sample/DynamicObjectCrossing_Town02_Route13_Weather6/anno/00048.json.gz
+tests/test_data/bench2drive_sample/DynamicObjectCrossing_Town02_Route13_Weather6/anno/00049.json.gz
+tests/test_data/bench2drive_sample/DynamicObjectCrossing_Town02_Route13_Weather6/anno/00050.json.gz
+tests/test_data/bench2drive_sample/DynamicObjectCrossing_Town02_Route13_Weather6/anno/0005*.json.gz
+tests/test_data/bench2drive_sample/DynamicObjectCrossing_Town02_Route13_Weather6/anno/0006*.json.gz
+tests/test_data/bench2drive_sample/DynamicObjectCrossing_Town02_Route13_Weather6/anno/0007*.json.gz
+tests/test_data/bench2drive_sample/DynamicObjectCrossing_Town02_Route13_Weather6/anno/0008*.json.gz
+tests/test_data/bench2drive_sample/DynamicObjectCrossing_Town02_Route13_Weather6/anno/0009*.json.gz
+tests/test_data/bench2drive_sample/DynamicObjectCrossing_Town02_Route13_Weather6/anno/001*.json.gz
+tests/test_data/bench2drive_sample/DynamicObjectCrossing_Town02_Route13_Weather6/anno/002*.json.gz
+tests/test_data/bench2drive_sample/DynamicObjectCrossing_Town02_Route13_Weather6/camera/
+tests/test_data/bench2drive_sample/DynamicObjectCrossing_Town02_Route13_Weather6/expert_assessment/
+tests/test_data/bench2drive_sample/DynamicObjectCrossing_Town02_Route13_Weather6/lidar/
+tests/test_data/bench2drive_sample/DynamicObjectCrossing_Town02_Route13_Weather6/radar/

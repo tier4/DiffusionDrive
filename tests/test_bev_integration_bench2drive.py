@@ -63,7 +63,7 @@ class TestBench2DriveBEVIntegration:
 
             # Should have at least background (0) and road (1)
             assert 0 in unique_classes, "Background class missing"
-            if frame_idx < len(scene.frames) - 8:  # If we have future frames
+            if frame_idx < len(scene.anno_paths) - 8:  # If we have future frames
                 assert 1 in unique_classes, "Road class missing"
 
     def test_bev_with_agents(self, scene_loader):

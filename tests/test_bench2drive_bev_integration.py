@@ -14,7 +14,7 @@ class TestBench2DriveBEVIntegration:
         """Create a mock scene for testing."""
         with patch.object(Bench2DriveScene, "__init__", lambda x, y, z: None):
             scene = Bench2DriveScene(None, None)
-            scene.frames = ["frame0", "frame1", "frame2"]
+            scene.anno_paths = ["frame0", "frame1", "frame2"]
             scene.history_frames = 1
             scene.data_folder = Mock()
             scene.scene_name = "test_scene"

@@ -15,7 +15,7 @@ import logging
 import ray
 from pathlib import Path
 from tqdm import tqdm
-from typing import Dict, Any
+from typing import Dict
 
 from navsim.common.bev_map_utils import (
     MapProcessor,
@@ -60,7 +60,19 @@ def worker_process_frame_ray(
 
     try:
         anno = load_annotation(frame_path)
-        world2ego = np.array(anno["bounding_boxes"][0]["world2ego"])
+
+        # Find ego vehicle in bounding boxes
+        ego_box = None
+        for box in anno["bounding_boxes"]:
+            if box["class"] == "ego_vehicle":
+                ego_box = box
+                break
+
+        if ego_box is None:
+            logging.error(f"Ego vehicle not found in frame {frame_path}")
+            return False
+
+        world2ego = np.array(ego_box["world2ego"])
 
         # Find the correct map processor for this frame's town
         town_name = next((p for p in scenario_name.split("_") if p.startswith("Town")), None)
@@ -73,7 +85,9 @@ def worker_process_frame_ray(
 
         if generate_full:
             # Call the optimized function that uses the processor
-            full_bev = generate_full_bev_from_map(map_processor, world2ego)
+            full_bev = generate_full_bev_from_map(
+                map_processor, world2ego, (ego_box["location"][:2])
+            )
             front_bev = extract_front_half_bev(full_bev)
             np.savez_compressed(
                 output_path,

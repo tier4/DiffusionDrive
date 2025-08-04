@@ -40,7 +40,6 @@ from navsim.common.bench2drive_constants import (
     BENCH2DRIVE_LIDAR_RANGE_M,
     BENCH2DRIVE_LIDAR_SIZE,
     DIFFUSIONDRIVE_LIDAR_SIZE,
-    LIDAR_PIXELS_PER_METER,
 )
 
 
@@ -194,7 +193,7 @@ class Bench2DriveFeatureBuilder(AbstractFeatureBuilder):
 
     def _get_lidar_feature(self, lidars: List[Any]) -> torch.Tensor:
         """
-        Process LiDAR data into BEV histogram.
+        Process LiDAR data into BEV histogram using NavSim-compatible splat_points logic.
 
         Note: Bench2Drive provides 85m x 85m LiDAR coverage, but DiffusionDrive
         expects 64m x 64m. We first process the full 85m range to preserve
@@ -215,29 +214,31 @@ class Bench2DriveFeatureBuilder(AbstractFeatureBuilder):
                 (1, DIFFUSIONDRIVE_LIDAR_SIZE, DIFFUSIONDRIVE_LIDAR_SIZE), dtype=torch.float32
             )
 
-        # Extract x, y coordinates (keep in CARLA coordinates)
-        points_xy = current_lidar[:, :2]
+        # Convert to NavSim-compatible format: (N, 3) with x,y,z
+        lidar_pc = current_lidar[:, :3]  # Extract x, y, z
+
+        # Adapted from NavSim TransFuser (navsim/agents/diffusiondrive/transfuser_features.py:88-103)
+        def splat_points(point_cloud, lidar_range_m, lidar_size):
+            """
+            Create 2D histogram from point cloud using np.histogramdd.
+            This matches NavSim TransFuser coordinate conventions.
+            """
+            # Create bins for the specified range and size
+            xbins = np.linspace(-lidar_range_m / 2, lidar_range_m / 2, lidar_size + 1)
+            ybins = np.linspace(-lidar_range_m / 2, lidar_range_m / 2, lidar_size + 1)
+
+            # Use histogramdd with (x, y) coordinate order - matches NavSim convention
+            hist = np.histogramdd(point_cloud[:, :2], bins=(xbins, ybins))[0]
+
+            # Apply clipping and normalization like NavSim
+            hist[hist > self.config.hist_max_per_pixel] = self.config.hist_max_per_pixel
+            overhead_splat = hist / self.config.hist_max_per_pixel
+
+            return overhead_splat
 
         # Step 1: Process at Bench2Drive's native 85m x 85m resolution
         # This preserves all the LiDAR information from the original data
-        pixel_coords_full = np.zeros_like(points_xy)
-        pixel_coords_full[:, 0] = (
-            points_xy[:, 0] + BENCH2DRIVE_LIDAR_RANGE_M / 2
-        ) * LIDAR_PIXELS_PER_METER
-        pixel_coords_full[:, 1] = (
-            points_xy[:, 1] + BENCH2DRIVE_LIDAR_RANGE_M / 2
-        ) * LIDAR_PIXELS_PER_METER
-
-        # Clip to valid range for full resolution
-        pixel_coords_full = np.clip(pixel_coords_full, 0, BENCH2DRIVE_LIDAR_SIZE - 1).astype(
-            np.int32
-        )
-
-        # Create histogram at full resolution (340x340 for 85m at 4 pixels/meter)
-        hist_full = np.zeros((BENCH2DRIVE_LIDAR_SIZE, BENCH2DRIVE_LIDAR_SIZE), dtype=np.float32)
-
-        # Count points in each pixel using vectorized operation
-        np.add.at(hist_full, (pixel_coords_full[:, 1], pixel_coords_full[:, 0]), 1)
+        hist_full = splat_points(lidar_pc, BENCH2DRIVE_LIDAR_RANGE_M, BENCH2DRIVE_LIDAR_SIZE)
 
         # Step 2: Resize to DiffusionDrive's expected 64m x 64m (256x256)
         # Using PIL for high-quality downsampling with LANCZOS filter
@@ -249,12 +250,6 @@ class Bench2DriveFeatureBuilder(AbstractFeatureBuilder):
 
         # Ensure non-negative values after resize (LANCZOS can produce small negative values)
         hist = np.maximum(hist, 0.0)
-
-        # Normalize to match NavSim's approach
-        # NavSim clips histogram values to hist_max_per_pixel and then normalizes
-        hist_max_per_pixel = self.config.hist_max_per_pixel  # Default is 5
-        hist = np.clip(hist, 0, hist_max_per_pixel)
-        hist = hist / hist_max_per_pixel  # Normalize to [0, 1]
 
         # Convert to tensor and add channel dimension
         bev_tensor = torch.from_numpy(hist).unsqueeze(0)  # [1, H, W]
@@ -339,6 +334,7 @@ class Bench2DriveTargetBuilder(AbstractTargetBuilder):
         # Note: agent_types can be used for improved BEV rendering if needed
 
         # Get BEV semantic map
+        # TODO: the bev map also should cover the same area as the lidar
         targets["bev_semantic_map"] = scene.get_bev_semantic_map()
 
         return targets

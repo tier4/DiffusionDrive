@@ -2,31 +2,36 @@
 Bench2Drive scene representation for CARLA-native training.
 """
 
-from pathlib import Path
-from typing import Dict, Optional, Tuple
-
-from PIL import Image
-import laspy
-import numpy as np
-import torch
-
 from navsim.common.dataclasses import AgentInput, EgoStatus
 from navsim.common.bench2drive_dataloader import (
     Bench2DriveConfig,
     load_bench2drive_annotation,
     map_carla_command_to_discrete,
 )
+from navsim.common.bev_semantic_utils import generate_simple_bev_semantic
 from navsim.common.bench2drive_constants import (
     B2D_CLASS_TO_NAVSIM,
     BEV_SEMANTIC_HEIGHT,
     BEV_SEMANTIC_WIDTH,
+    BEV_SEMANTIC_RESOLUTION,
     NUM_FUTURE_WAYPOINTS,
     MAX_AGENTS,
 )
-
+from navsim.common.bev_map_utils import load_map_data, generate_bev_from_map
 
 # Import the real dataclasses
 from navsim.common.dataclasses import Camera as CameraDataclass, Cameras, Lidar
+
+from pathlib import Path
+from typing import Dict, Optional, Tuple
+import logging
+
+from PIL import Image
+import laspy
+import numpy as np
+import torch
+
+logger = logging.getLogger(__name__)
 
 
 # Simple wrapper classes for Bench2Drive
@@ -76,11 +81,9 @@ class Bench2DriveScene:
         self._sensor_data_cache = {}
 
         # Frame information
-        self.frames = scene_info["frames"]
+        self.anno_paths = scene_info["frames"]
         self.base_path = scene_info["base_path"]
 
-        # Calculate frame indices
-        self.num_frames = len(self.frames)
         self.history_frames = config.num_history_frames
         self.future_frames = config.num_future_frames
 
@@ -123,6 +126,7 @@ class Bench2DriveScene:
             lidars_list.append(lidar)
             ego_statuses_list.append(ego_status)
 
+        # TODO: need to add a check for empty images or status here
         return AgentInput(
             ego_statuses=ego_statuses_list,
             cameras=cameras_list,
@@ -134,7 +138,7 @@ class Bench2DriveScene:
         if frame_idx in self._annotations_cache:
             return self._annotations_cache[frame_idx]
 
-        anno_path = self.frames[frame_idx]
+        anno_path = self.anno_paths[frame_idx]
         anno = load_bench2drive_annotation(anno_path)
 
         self._annotations_cache[frame_idx] = anno
@@ -147,7 +151,7 @@ class Bench2DriveScene:
         Returns Camera object with 8 views (matching NavSim format).
         """
         # Extract frame number from annotation filename (e.g., "00000.json.gz" -> "00000")
-        frame_id = self.frames[frame_idx].stem.split(".")[0]  # e.g., "00000"
+        frame_id = self.anno_paths[frame_idx].stem.split(".")[0]  # e.g., "00000"
         camera_base = self.base_path / "camera"
 
         # Map NavSim 8-camera format to actual Bench2Drive camera names
@@ -236,7 +240,7 @@ class Bench2DriveScene:
         Returns LiDAR object with point cloud.
         """
         # Extract frame number from annotation filename (e.g., "00000.json.gz" -> "00000")
-        frame_id = self.frames[frame_idx].stem.split(".")[0]
+        frame_id = self.anno_paths[frame_idx].stem.split(".")[0]
         lidar_path = self.base_path / "lidar" / f"{frame_id}.laz"
 
         if lidar_path.exists():
@@ -272,48 +276,42 @@ class Bench2DriveScene:
 
         Returns EgoStatus object.
         """
-        # Find ego vehicle in bounding boxes for accurate heading
+        # Find ego vehicle in bounding boxes - REQUIRED
         ego_box = None
-        bounding_boxes = anno.get("bounding_boxes", [])
+        bounding_boxes = anno["bounding_boxes"]
         for box in bounding_boxes:
-            if box.get("class") == "ego_vehicle":
+            if box["class"] == "ego_vehicle":
                 ego_box = box
                 break
 
-        # Extract position and heading from ego bounding box if available
-        if ego_box:
-            # Use bounding box location for position
-            ego_x = ego_box["location"][0]
-            ego_y = ego_box["location"][1]
+        if ego_box is None:
+            raise ValueError(f"Ego vehicle not found in bounding boxes for frame")
 
-            # Extract yaw from rotation (z-component)
-            ego_yaw_degrees = ego_box["rotation"][2]
-            ego_heading = -np.radians(ego_yaw_degrees)  # CW to CCW conversion
+        # Use bounding box location for position
+        ego_x = ego_box["location"][0]
+        ego_y = ego_box["location"][1]
 
-            # For velocity, use the correct heading
-            theta_rad = np.radians(ego_yaw_degrees)
-        else:
-            # Fallback to annotation values if ego not found in bounding boxes
-            ego_x = anno.get("x", 0.0)
-            ego_y = anno.get("y", 0.0)
-            theta = anno.get("theta", 0.0)  # In degrees
-            ego_heading = -np.radians(theta)  # CW to CCW conversion
-            theta_rad = np.radians(theta)
+        # Extract yaw from rotation (z-component)
+        ego_yaw_degrees = ego_box["rotation"][2]
+        ego_heading = -np.radians(ego_yaw_degrees)  # CW to CCW conversion
+
+        # For velocity, use the correct heading
+        theta_rad = np.radians(ego_yaw_degrees)
 
         # Extract velocity (m/s)
-        speed = anno.get("speed", 0.0)
+        speed = anno["speed"]
         vx = speed * np.cos(theta_rad)
         vy = speed * np.sin(theta_rad)
         ego_velocity = np.array([vx, vy], dtype=np.float32)
 
         # Extract acceleration (m/s²)
         # Acceleration is a list [x, y, z] in the annotation
-        accel = anno.get("acceleration", [0.0, 0.0, 0.0])
+        accel = anno["acceleration"]
         ego_acceleration = np.array([accel[0], accel[1]], dtype=np.float32)
 
         # Extract driving command
         # Use command_near as it's for immediate navigation
-        carla_command = anno.get("command_near", 3)  # Default to STRAIGHT
+        carla_command = anno["command_near"]
         driving_command = map_carla_command_to_discrete(carla_command)
 
         # Create ego pose (x, y, heading)
@@ -346,49 +344,47 @@ class Bench2DriveScene:
         # Get ego information at current frame
         current_anno = self._load_annotation(frame_idx)
 
-        # Find ego vehicle in bounding boxes for accurate transformation
+        # Find ego vehicle in bounding boxes - REQUIRED
         ego_box = None
         world2ego_matrix = None
-        for box in current_anno.get("bounding_boxes", []):
-            if box.get("class") == "ego_vehicle":
+        for box in current_anno["bounding_boxes"]:
+            if box["class"] == "ego_vehicle":
                 ego_box = box
                 # Get world2ego transformation matrix
-                world2ego_matrix = np.array(box.get("world2ego", np.eye(4).tolist()))
+                world2ego_matrix = np.array(box["world2ego"])
                 break
 
-        if ego_box:
-            # Use ego bounding box information
-            current_x = ego_box["location"][0]
-            current_y = ego_box["location"][1]
-            current_theta = -np.radians(ego_box["rotation"][2])  # CW to CCW
-        else:
-            # Fallback to annotation values
-            current_x = current_anno.get("x", 0.0)
-            current_y = current_anno.get("y", 0.0)
-            current_theta = -np.radians(current_anno.get("theta", 0.0))
+        if ego_box is None:
+            raise ValueError(
+                f"Ego vehicle not found in bounding boxes for trajectory frame {frame_idx}"
+            )
 
-        # Sample future frames (every 5 frames = 0.5s at 2Hz after downsampling)
+        # Use ego bounding box information
+        current_x = ego_box["location"][0]
+        current_y = ego_box["location"][1]
+        current_theta = -np.radians(ego_box["rotation"][2])  # CW to CCW
+
+        # Sample future frames (consecutive frames at 0.5s intervals)
+        # The dataloader's sampling_rate already ensures correct temporal spacing
         for i in range(1, NUM_FUTURE_WAYPOINTS + 1):  # NUM_FUTURE_WAYPOINTS future waypoints
             future_idx = frame_idx + i
 
-            if future_idx < len(self.frames):
+            if future_idx < len(self.anno_paths):
                 future_anno = self._load_annotation(future_idx)
 
                 # Find future ego position
                 future_ego_box = None
-                for box in future_anno.get("bounding_boxes", []):
-                    if box.get("class") == "ego_vehicle":
+                for box in future_anno["bounding_boxes"]:
+                    if box["class"] == "ego_vehicle":
                         future_ego_box = box
                         break
 
-                if future_ego_box:
-                    future_x = future_ego_box["location"][0]
-                    future_y = future_ego_box["location"][1]
-                    future_theta = -np.radians(future_ego_box["rotation"][2])
-                else:
-                    future_x = future_anno.get("x", 0.0)
-                    future_y = future_anno.get("y", 0.0)
-                    future_theta = -np.radians(future_anno.get("theta", 0.0))
+                if future_ego_box is None:
+                    raise ValueError(f"Ego vehicle not found in future frame {future_idx}")
+
+                future_x = future_ego_box["location"][0]
+                future_y = future_ego_box["location"][1]
+                future_theta = -np.radians(future_ego_box["rotation"][2])
 
                 # Convert to ego-centric coordinates using world2ego matrix if available
                 if world2ego_matrix is not None:
@@ -437,26 +433,25 @@ class Bench2DriveScene:
 
         anno = self._load_annotation(frame_idx)
 
-        # Find ego vehicle in bounding boxes for accurate transformation
+        # Find ego vehicle in bounding boxes - REQUIRED
         ego_box = None
         world2ego_matrix = None
-        for box in anno.get("bounding_boxes", []):
-            if box.get("class") == "ego_vehicle":
+        for box in anno["bounding_boxes"]:
+            if box["class"] == "ego_vehicle":
                 ego_box = box
                 # Get world2ego transformation matrix
-                world2ego_matrix = np.array(box.get("world2ego", np.eye(4).tolist()))
+                world2ego_matrix = np.array(box["world2ego"])
                 break
 
-        if ego_box:
-            # Use ego bounding box information
-            ego_x = ego_box["location"][0]
-            ego_y = ego_box["location"][1]
-            ego_theta = -np.radians(ego_box["rotation"][2])  # CW to CCW
-        else:
-            # Fallback to annotation values
-            ego_x = anno.get("x", 0.0)
-            ego_y = anno.get("y", 0.0)
-            ego_theta = -np.radians(anno.get("theta", 0.0))  # Convert to radians CCW
+        if ego_box is None:
+            raise ValueError(
+                f"Ego vehicle not found in bounding boxes for agents frame {frame_idx}"
+            )
+
+        # Use ego bounding box information
+        ego_x = ego_box["location"][0]
+        ego_y = ego_box["location"][1]
+        ego_theta = -np.radians(ego_box["rotation"][2])  # CW to CCW
 
         # Process vehicles from bounding_boxes
         max_agents = MAX_AGENTS  # Maximum number of agents to track
@@ -610,6 +605,7 @@ class Bench2DriveScene:
             torch.from_numpy(agent_types),
         )
 
+    # TODO: Check this BEV map logic carefully
     def get_bev_semantic_map(self, frame_idx: int = -1) -> torch.Tensor:
         """
         Get BEV semantic segmentation map.
@@ -622,54 +618,6 @@ class Bench2DriveScene:
         optimizes for forward-driving scenarios where lateral awareness is more
         critical than forward/backward range.
         """
-        from navsim.common.bev_semantic_utils import generate_simple_bev_semantic
-
-        # Get trajectory for road generation
-        trajectory = None
-        if (
-            hasattr(self, "_future_trajectory_cache")
-            and frame_idx in self._future_trajectory_cache
-        ):
-            # Use cached trajectory if available
-            traj_data = self._future_trajectory_cache[frame_idx]
-            trajectory = traj_data  # Already in ego-centric coordinates
-        else:
-            # Try to generate trajectory from future frames
-            try:
-                future_positions = []
-                for i in range(min(8, len(self.frames) - frame_idx - 1)):
-                    future_frame = self._load_annotation(frame_idx + i + 1)
-                    if future_frame is not None:
-                        ego_x = future_frame.get("x", 0.0)
-                        ego_y = future_frame.get("y", 0.0)
-                        ego_theta = future_frame.get("theta", 0.0)
-
-                        # Convert to ego-centric coordinates
-                        current_frame = self._load_annotation(frame_idx)
-                        if current_frame is not None:
-                            curr_x = current_frame.get("x", 0.0)
-                            curr_y = current_frame.get("y", 0.0)
-                            curr_theta = current_frame.get("theta", 0.0)
-
-                            # Transform to ego-centric
-                            dx = ego_x - curr_x
-                            dy = ego_y - curr_y
-                            cos_theta = np.cos(curr_theta)
-                            sin_theta = np.sin(curr_theta)
-
-                            ego_centric_x = dx * cos_theta + dy * sin_theta
-                            ego_centric_y = -dx * sin_theta + dy * cos_theta
-                            ego_centric_heading = ego_theta - curr_theta
-
-                            future_positions.append(
-                                [ego_centric_x, ego_centric_y, ego_centric_heading]
-                            )
-
-                if future_positions:
-                    trajectory = np.array(future_positions)
-            except:
-                # If trajectory generation fails, use None
-                trajectory = None
 
         # Get agents for vehicle generation
         agents, labels, agent_types = self.get_agents(frame_idx)
@@ -683,7 +631,7 @@ class Bench2DriveScene:
         if hasattr(self.config, "bev_cache_dir") and self.config.bev_cache_dir:
             cache_dir = Path(self.config.bev_cache_dir)
             scenario_name = self.scene_info["scenario"]  # Get scenario name
-            frame_number = self.frames[frame_idx].stem.split(".")[0]
+            frame_number = self.anno_paths[frame_idx].stem.split(".")[0]
             cache_path = cache_dir / scenario_name / f"{frame_number}.npz"
 
             if cache_path.exists():
@@ -708,45 +656,54 @@ class Bench2DriveScene:
 
         # If no cached BEV, try to generate from HD map if available
         if map_bev is None and hasattr(self.config, "map_dir") and self.config.map_dir:
-            try:
-                from navsim.common.bev_map_utils import load_map_data, generate_bev_from_map
 
-                # Extract town name from scenario
-                parts = self.scene_info["scenario"].split("_")
-                town_name = None
-                for part in parts:
-                    if part.startswith("Town"):
-                        town_name = part
-                        break
+            # Extract town name from scenario
+            parts = self.scene_info["scenario"].split("_")
+            town_name = None
+            for part in parts:
+                if part.startswith("Town"):
+                    town_name = part
+                    break
 
-                if town_name:
-                    map_path = Path(self.config.map_dir) / f"{town_name}_HD_map.npz"
-                    if map_path.exists():
-                        # Load map data
-                        map_data = load_map_data(map_path)
+            if town_name:
+                map_path = Path(self.config.map_dir) / f"{town_name}_HD_map.npz"
+                if map_path.exists():
+                    # Load map data
+                    map_data = load_map_data(map_path)
 
-                        # Get world2ego transform
-                        anno = self._load_annotation(frame_idx)
-                        if anno and "bounding_boxes" in anno:
-                            world2ego = np.array(anno["bounding_boxes"][0]["world2ego"])
-
-                            # Generate BEV from map
-                            map_bev = generate_bev_from_map(
-                                map_data=map_data,
-                                world2ego=world2ego,
-                                bev_height=BEV_SEMANTIC_HEIGHT,
-                                bev_width=BEV_SEMANTIC_WIDTH,
-                                resolution=0.25,
-                                lane_thickness=0.4,
-                                max_distance=50.0,
+                    # Get world2ego transform and ego position
+                    anno = self._load_annotation(frame_idx)
+                    if anno and "bounding_boxes" in anno:
+                        ego_vehicle = anno["bounding_boxes"][0]
+                        if ego_vehicle["class"] != "ego_vehicle":
+                            raise ValueError(
+                                f"Expected ego_vehicle but got {ego_vehicle['class']}"
                             )
-                            print(f"Generated BEV from HD map for {town_name}")
-            except Exception as e:
-                print(f"Failed to generate BEV from map: {e}")
 
-        # Generate BEV semantic map using the correct dataset-level approach
+                        world2ego = np.array(ego_vehicle["world2ego"])
+                        ego_position = (ego_vehicle["location"][0], ego_vehicle["location"][1])
+
+                        # Generate BEV from map
+                        # TODO: But with no road in BEV
+                        map_bev = generate_bev_from_map(
+                            map_data=map_data,
+                            world2ego=world2ego,
+                            ego_position=ego_position,
+                            bev_height=BEV_SEMANTIC_HEIGHT,
+                            bev_width=BEV_SEMANTIC_WIDTH,
+                            resolution=BEV_SEMANTIC_RESOLUTION,  # 0.332m/pixel for 85m coverage
+                            lane_thickness=0.4,
+                            # max_distance will be automatically calculated based on BEV coverage
+                        )
+                        print(f"Generated BEV from HD map for {town_name}")
+        if map_bev is None:
+            raise ValueError(
+                "No BEV map available. Please ensure either a BEV cache directory is set or "
+                "a valid HD map is provided in the configuration."
+            )
+
+        # Use two-stage approach (static cache + dynamic overlay)
         bev_map = generate_simple_bev_semantic(
-            trajectory=trajectory if map_bev is None else None,  # Only use trajectory if no map
             agents=agents,
             agent_labels=labels,
             agent_types=(
@@ -754,7 +711,7 @@ class Bench2DriveScene:
             ),
             bev_height=BEV_SEMANTIC_HEIGHT,
             bev_width=BEV_SEMANTIC_WIDTH,
-            resolution=0.25,  # 0.25 meters per pixel
+            resolution=BEV_SEMANTIC_RESOLUTION,  # 0.332m/pixel for 85m coverage
             map_bev=map_bev,  # Use map-based BEV if available
         )
 
@@ -762,4 +719,4 @@ class Bench2DriveScene:
 
     def __len__(self) -> int:
         """Get number of frames in scene."""
-        return self.num_frames
+        return len(self.anno_paths)

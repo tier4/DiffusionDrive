@@ -5,11 +5,14 @@ This is the CORRECT approach - BEV generation happens during data loading,
 not through model modifications.
 """
 
+# TODO: this script should be merge with bev_map_utils.py, or other refacotring method
+
 import numpy as np
 import cv2
-from typing import Dict, Tuple, Optional
+from typing import Tuple, Optional
 
 
+# TODO: to b2d constant
 # CARLA to BEV semantic class mapping
 CARLA_TO_BEV_MAPPING = {
     # Background (0)
@@ -52,25 +55,6 @@ CARLA_TO_BEV_MAPPING = {
 }
 
 
-def map_carla_to_bev_semantic(carla_semantic: np.ndarray) -> np.ndarray:
-    """
-    Map CARLA semantic segmentation values to BEV semantic classes.
-
-    Args:
-        carla_semantic: Array with CARLA semantic values (0-28)
-
-    Returns:
-        Array with BEV semantic values (0-6)
-    """
-    bev_semantic = np.zeros_like(carla_semantic, dtype=np.uint8)
-
-    for carla_val, bev_val in CARLA_TO_BEV_MAPPING.items():
-        mask = carla_semantic == carla_val
-        bev_semantic[mask] = bev_val
-
-    return bev_semantic
-
-
 def ego_to_bev_coordinates(
     points_ego: np.ndarray, bev_height: int = 128, bev_width: int = 256, resolution: float = 0.25
 ) -> np.ndarray:
@@ -95,19 +79,23 @@ def ego_to_bev_coordinates(
     # col: 0 at left, increases rightward
 
     # The BEV covers:
-    # - Forward: 0 to +32m (128 pixels * 0.25 m/pixel)
-    # - Lateral: -32m to +32m (256 pixels * 0.25 m/pixel)
+    # - Forward/Backward: ±32m (256 pixels * 0.25 m/pixel for full view)
+    # - Lateral: ±32m (256 pixels * 0.25 m/pixel)
+    # - For 128x256 BEV: Forward: +32m, Backward: 0m (front-only view)
     #
-    # Ego vehicle is at:
-    # - row = bev_height - 1 (bottom of image)
-    # - col = bev_width / 2 (center of image)
+    # Ego vehicle is at CENTER of the full 360° view:
+    # - For 256x256: row = 128, col = 128 (center)
+    # - For 128x256: row = 128 (bottom edge), col = 128 (center)
 
-    # Convert coordinates
-    # For row: ego is at bottom, forward is up
-    rows = (bev_height - 1) - points_ego[:, 0] / resolution
-
-    # For col: ego is at center, left is positive in ego coords but right in image
-    cols = bev_width / 2 + points_ego[:, 1] / resolution
+    # Convert coordinates based on BEV dimensions
+    if bev_height == 256 and bev_width == 256:
+        # Full 360° BEV: ego at center
+        rows = bev_height / 2 - points_ego[:, 0] / resolution
+        cols = bev_width / 2 + points_ego[:, 1] / resolution
+    else:
+        # Front-only BEV (128x256): ego at bottom center
+        rows = (bev_height - 1) - points_ego[:, 0] / resolution
+        cols = bev_width / 2 + points_ego[:, 1] / resolution
 
     pixels = np.stack([rows, cols], axis=1).astype(np.int32)
 
@@ -122,7 +110,7 @@ def draw_rotated_box(
 
     Args:
         image: Image to draw on
-        center: (row, col) center of box
+        center: (row, col) center of box in image coordinates
         size: (height, width) of box in pixels
         angle: Rotation angle in radians
         value: Fill value
@@ -135,6 +123,7 @@ def draw_rotated_box(
     sin_a = np.sin(angle)
 
     # Box corners (relative to center)
+    # Using row-major convention: height corresponds to Y, width to X
     h, w = size
     corners = np.array([[-h / 2, -w / 2], [h / 2, -w / 2], [h / 2, w / 2], [-h / 2, w / 2]])
 
@@ -143,12 +132,15 @@ def draw_rotated_box(
     rotated_corners = corners @ rot_matrix.T
 
     # Translate to absolute position
-    # Note: OpenCV uses (x,y) = (col,row) convention
-    abs_corners = rotated_corners + np.array([[center[1], center[0]]])
-    abs_corners = abs_corners.astype(np.int32)
+    # Input center is (row, col), but we need to be consistent
+    # corners are in (y, x) format matching row-major indexing
+    abs_corners = rotated_corners + np.array([[center[0], center[1]]])
+
+    # OpenCV expects points in (x, y) format, so swap columns
+    cv2_corners = abs_corners[:, [1, 0]].astype(np.int32)
 
     # Draw filled polygon
-    cv2.fillPoly(image, [abs_corners], value)
+    cv2.fillPoly(image, [cv2_corners], value)  # type: ignore
 
     return image
 
@@ -194,7 +186,9 @@ def generate_road_mask_from_trajectory(
     # OpenCV expects (x,y) = (col,row) format
     points = traj_pixels[:, [1, 0]].astype(np.int32)
     thickness = int(road_width / resolution)
-    cv2.polylines(road_mask, [points], isClosed=False, color=1, thickness=thickness)
+    cv2.polylines(
+        road_mask, [points], isClosed=False, color=1, thickness=thickness  # type: ignore
+    )  # type: ignore
 
     return road_mask
 
@@ -258,15 +252,15 @@ def generate_agent_mask(
     return vehicle_mask
 
 
+# TODO: Shoud not be so many None, can be more strict
 def generate_simple_bev_semantic(
-    trajectory: Optional[np.ndarray] = None,
-    agents: Optional[np.ndarray] = None,
-    agent_labels: Optional[np.ndarray] = None,
-    agent_types: Optional[np.ndarray] = None,
-    bev_height: int = 128,
-    bev_width: int = 256,
-    resolution: float = 0.25,
-    map_bev: Optional[np.ndarray] = None,
+    agents: np.ndarray,
+    agent_labels: np.ndarray,
+    agent_types: np.ndarray,
+    bev_height: int,
+    bev_width: int,
+    resolution: float,
+    map_bev: np.ndarray,
 ) -> np.ndarray:
     """
     Generate a simple BEV semantic map from trajectory and agents.
@@ -279,9 +273,9 @@ def generate_simple_bev_semantic(
         agents: Mx5 array of (x, y, heading, length, width) for other agents
         agent_labels: M boolean array indicating valid agents
         agent_types: M array of NavSim class IDs (5=vehicle, 6=pedestrian)
-        bev_height: Height of BEV map (default: 128)
-        bev_width: Width of BEV map (default: 256)
-        resolution: Meters per pixel (default: 0.25)
+        bev_height: Height of BEV map
+        bev_width: Width of BEV map
+        resolution: Meters per pixel
         map_bev: Optional pre-generated BEV from map data
 
     Returns:
@@ -291,14 +285,7 @@ def generate_simple_bev_semantic(
     if map_bev is not None:
         bev_map = map_bev.copy()
     else:
-        bev_map = np.zeros((bev_height, bev_width), dtype=np.uint8)
-
-        # Add road from trajectory only if no map data
-        if trajectory is not None and len(trajectory) > 0:
-            road_mask = generate_road_mask_from_trajectory(
-                trajectory, bev_height, bev_width, resolution
-            )
-            bev_map[road_mask > 0] = 1  # Road class
+        raise ValueError("map_bev must be provided for simple BEV generation")
 
     # Add agents with proper class types (vehicles and pedestrians)
     if agents is not None and agent_labels is not None:
@@ -314,64 +301,12 @@ def generate_simple_bev_semantic(
                         bev_map[agent_mask > 0] = agent_class
         else:
             # Fallback: treat all agents as vehicles
-            vehicle_mask = generate_vehicle_mask_from_agents(
+            vehicle_mask = generate_agent_mask(
                 agents, agent_labels, bev_height, bev_width, resolution
             )
             bev_map[vehicle_mask > 0] = 5  # Vehicle class
+    else:
+        raise ValueError("Agents and agent labels must be provided for BEV generation")
 
     # Ensure integer type for class labels
     return bev_map.astype(np.uint8)
-
-
-# Backward compatibility alias
-generate_vehicle_mask_from_agents = generate_agent_mask
-
-
-def project_semantic_to_bev(
-    semantic_images: Dict[str, np.ndarray],
-    camera_intrinsics: Dict[str, np.ndarray],
-    camera_extrinsics: Dict[str, np.ndarray],
-    bev_height: int = 128,
-    bev_width: int = 256,
-    resolution: float = 0.25,
-    camera_height: float = 1.5,
-) -> np.ndarray:
-    """
-    Project perspective semantic segmentation images to BEV.
-
-    This is a more advanced method that uses camera geometry to project
-    semantic segmentation from multiple cameras to BEV space.
-
-    Args:
-        semantic_images: Dict of camera_name -> semantic image
-        camera_intrinsics: Dict of camera_name -> 3x3 intrinsic matrix
-        camera_extrinsics: Dict of camera_name -> 4x4 extrinsic matrix
-        bev_height: Height of BEV map
-        bev_width: Width of BEV map
-        resolution: Meters per pixel
-        camera_height: Assumed height of camera above ground
-
-    Returns:
-        BEV semantic map
-    """
-    # This is a placeholder for the more complex projection method
-    # For now, return simple BEV
-    return generate_simple_bev_semantic(
-        bev_height=bev_height, bev_width=bev_width, resolution=resolution
-    )
-
-
-# Coordinate transformation utilities
-def transform_carla_to_navsim(points_carla: np.ndarray) -> np.ndarray:
-    """
-    Transform points from CARLA (left-handed) to NavSim (right-handed) coordinates.
-
-    Args:
-        points_carla: Nx3 or Nx4 array of points
-
-    Returns:
-        Transformed points
-    """
-    points_navsim = points_carla.copy()
-    points_navsim[:, 1] = -points_navsim[:, 1]  # Flip Y axis
-    return points_navsim

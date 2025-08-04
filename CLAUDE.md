@@ -11,6 +11,7 @@ DiffusionDrive is a truncated diffusion model for end-to-end autonomous driving 
 > **Note:** The following changes were made by a community contributor and are not from the original DiffusionDrive authors.
 
 ### Script Reorganization
+
 - All scripts moved to organized structure under `scripts/` directory
 - Legacy date-based scripts archived in `archive/legacy/`
 - New parameterized scripts with CLI arguments
@@ -19,6 +20,7 @@ DiffusionDrive is a truncated diffusion model for end-to-end autonomous driving 
 ## Development Commands
 
 ### Environment Setup
+
 ```bash
 # Create conda environment
 conda env create -f environment.yml
@@ -32,6 +34,7 @@ pip install -e .
 ```
 
 ### Dataset Caching (Required before training/evaluation)
+
 ```bash
 # Cache training dataset
 python3 navsim/planning/script/run_dataset_caching.py agent=diffusiondrive_agent experiment_name=training_diffusiondrive_agent train_test_split=navtrain
@@ -41,6 +44,7 @@ python3 navsim/planning/script/run_metric_caching.py train_test_split=navtest ca
 ```
 
 ### Training
+
 ```bash
 python3 $NAVSIM_DEVKIT_ROOT/navsim/planning/script/run_training.py \
     agent=diffusiondrive_agent \
@@ -54,6 +58,7 @@ python3 $NAVSIM_DEVKIT_ROOT/navsim/planning/script/run_training.py \
 ```
 
 ### Evaluation
+
 ```bash
 # Set checkpoint path
 export CKPT=/path/to/checkpoint.pth
@@ -68,6 +73,7 @@ python3 $NAVSIM_DEVKIT_ROOT/navsim/planning/script/run_pdm_score.py \
 ```
 
 ### Testing CUDA/PyTorch Setup
+
 ```bash
 python3 test_cuda_torch.py
 ```
@@ -108,10 +114,12 @@ python3 test_cuda_torch.py
 ### Important Configuration Parameters
 
 Before training, update these in `transfuser_config.py`:
+
 - `bkb_path`: Path to pretrained ResNet-34 model
 - `plan_anchor_path`: Path to k-means clustered trajectory anchors
 
 Environment variables:
+
 - `NAVSIM_DEVKIT_ROOT`: Root directory of the repository
 - `NAVSIM_EXP_ROOT`: Directory for experiment outputs and caches
 
@@ -129,12 +137,26 @@ Environment variables:
 - Evaluation uses Ray distributed computing - ensure sufficient system resources
 
 ## Development Notes
+
 - There is not 'python', just 'python3'
 
 ## Testing Guidelines
+
 - Use pytest for testing
 - Put tests under ./tests folder
 
 ## Code Style Guidelines
-- Module level import should be at the top of the file
-- Should use black as python formatter
+
+### Formatting
+
+- Use black for all Python code formatting to ensure consistency.
+
+### Imports
+
+- Group at Top: All module-level imports must be at the top of the file.
+- No sys.path Manipulation: Do not modify sys.path to resolve imports. This is a fragile, outdated practice. The project is installed via pip install -e ., so standard absolute and relative imports will work correctly.
+
+### Error Handling: "Fail Fast and Loud"
+
+- Avoid Suppressing Errors: Do not use try...except blocks to silently ignore or hide errors (e.g., except: pass). Code should fail immediately when an unexpected state occurs.
+- Raise Specific Exceptions: Instead of catching an error and returning None, allow the original exception to be raised or raise a more specific, descriptive exception (e.g., ValueError, TypeError). This makes debugging significantly easier.

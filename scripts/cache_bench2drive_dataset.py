@@ -128,13 +128,19 @@ def cache_bench2drive_dataset(
         logger.info(f"Found {len(scenarios)} scenarios in {data_root}")
 
     # Create configuration
+    # NOTE: With sampling_rate=5, data is already at 2Hz (0.5s per frame)
+    # For trajectory, we need history_frames + 8 future waypoints
+    # Since data is at 2Hz, each frame is already 0.5s apart, so we need:
+    # - 4 history frames
+    # - 8 future frames (for 8 waypoints at 0.5s intervals)
+    # Total: 12 frames minimum
     config = Bench2DriveConfig(
         data_root=data_root,
         scenarios=scenarios,
-        sampling_rate=5,  # 10Hz -> 2Hz
-        num_frames=30,
+        sampling_rate=5,  # 10Hz -> 2Hz (each frame is 0.5s)
+        num_frames=30,  # 15 seconds at 2Hz
         num_history_frames=4,
-        num_future_frames=26,
+        num_future_frames=26,  # Plenty for 8 waypoints
         extract_tar=False,
         map_dir=map_dir,
         bev_cache_dir=bev_cache_dir,
@@ -219,7 +225,7 @@ def cache_bench2drive_dataset(
             logger.error(f"  {token}: {error}")
         if len(failed_scenes) > 10:
             logger.error(f"  ... and {len(failed_scenes) - 10} more errors")
-        
+
         # Raise exception to fail the process
         raise RuntimeError(
             f"Dataset caching failed: {len(failed_scenes)} scenes could not be processed. "
@@ -278,7 +284,7 @@ def main():
             raise FileNotFoundError(
                 f"BEV cache directory not found: {args.bev_cache_dir}\n"
                 f"Please either:\n"
-                f"1. Run generate_bev_cache.py first to create the BEV cache\n" 
+                f"1. Run generate_bev_cache.py first to create the BEV cache\n"
                 f"2. Remove the --bev-cache-dir argument to skip using BEV cache"
             )
     else:

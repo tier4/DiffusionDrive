@@ -1,0 +1,59 @@
+{
+  "configuration_differences": {
+    "config/dataset_type": {
+      "status": "missing_in_navsim",
+      "b2d_value": "navsim"
+    },
+    "config/plan_anchor_path": {
+      "status": "missing_in_navsim",
+      "b2d_value": "/workspace/DiffusionDrive/download/kmeans_navsim_traj_20.npy"
+    },
+    "config/_target_": {
+      "status": "different",
+      "nav_value": "navsim.agents.diffusiondrive.transfuser_config.TransfuserConfig",
+      "b2d_value": "navsim.agents.diffusiondrive.extended_transfuser_config.ExtendedTransfuserConfig"
+    },
+    "config/bkb_path": {
+      "status": "missing_in_navsim",
+      "b2d_value": "/workspace/DiffusionDrive/download/pytorch_model.bin"
+    },
+    "defaults": {
+      "status": "missing_in_navsim",
+      "b2d_value": [
+        "diffusiondrive_agent"
+      ]
+    },
+    "_target_": {
+      "status": "different",
+      "nav_value": "navsim.agents.diffusiondrive.transfuser_agent.TransfuserAgent",
+      "b2d_value": "navsim.agents.diffusiondrive.extended_transfuser_agent.ExtendedTransfuserAgent"
+    }
+  },
+  "normalization_differences": {
+    "x": {
+      "nav_offset": 1.2,
+      "nav_scale": 56.9,
+      "b2d_offset": 35.0,
+      "b2d_scale": 70.0,
+      "scale_ratio": 1.2302284710017575
+    },
+    "y": {
+      "nav_offset": 20.0,
+      "nav_scale": 46.0,
+      "b2d_offset": 35.0,
+      "b2d_scale": 70.0,
+      "scale_ratio": 1.5217391304347827
+    },
+    "heading": {
+      "nav_offset": 2.0,
+      "nav_scale": 3.9,
+      "b2d_offset": 0.05,
+      "b2d_scale": 0.5,
+      "scale_ratio": 0.12820512820512822
+    }
+  },
+  "model_parameter_differences": {},
+  "processing_differences": {},
+  "numerical_differences": {},
+  "recommendations": []
+}

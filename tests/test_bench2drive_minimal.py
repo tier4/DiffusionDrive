@@ -11,10 +11,6 @@ import matplotlib.pyplot as plt
 import pytest
 import torch
 
-# Set environment variables before imports
-os.environ["BENCH2DRIVE_ROOT"] = "/workspace/Bench2Drive-mini"
-os.environ["NAVSIM_EXP_ROOT"] = "/workspace/navsim_workspace/exp"
-
 from navsim.agents.diffusiondrive.transfuser_config import TransfuserConfig
 from navsim.agents.diffusiondrive.transfuser_features_b2d import (
     Bench2DriveFeatureBuilder,
@@ -47,31 +43,18 @@ def test_command_mapping():
 
 
 @pytest.fixture
-def bench2drive_config():
-    """Create Bench2Drive configuration for testing."""
-    return Bench2DriveConfig(
-        data_root=Path("/workspace/Bench2Drive-mini"),
-        scenarios=["ConstructionObstacle_Town05_Route68_Weather8"],
-        sampling_rate=5,
-        num_frames=30,
-        num_history_frames=4,
-        num_future_frames=26,
-        extract_tar=False,
-    )
+def bench2drive_config(sample_config):
+    """Create Bench2Drive configuration using test data from conftest."""
+    # Use the sample_config from conftest which uses test_data directory
+    return sample_config
 
 
 @pytest.fixture
-def bench2drive_config_full():
+def bench2drive_config_full(sample_config):
     """Create Bench2Drive configuration for full dataset testing."""
-    return Bench2DriveConfig(
-        data_root=Path("/workspace/Bench2Drive-Base"),
-        scenarios=["ConstructionObstacle"],  # Just one scenario for testing
-        sampling_rate=5,
-        num_frames=30,
-        num_history_frames=4,
-        num_future_frames=26,
-        extract_tar=False,
-    )
+    # For now, use the same test data as mini dataset
+    # This avoids dependency on external datasets
+    return sample_config
 
 
 @pytest.fixture
@@ -97,8 +80,8 @@ def test_scene_loading(scene_loader):
     scene = scene_loader.get_scene(token)
 
     assert scene is not None
-    assert hasattr(scene, "frames")
-    assert len(scene.frames) == scene_loader.config.num_frames
+    assert hasattr(scene, "anno_paths")
+    assert len(scene.anno_paths) == scene_loader.config.num_frames
     assert scene.token == token
 
 

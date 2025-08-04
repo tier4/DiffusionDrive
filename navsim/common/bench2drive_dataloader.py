@@ -77,22 +77,20 @@ class Bench2DriveSceneLoader:
 
             for scenario_path in scenario_dirs:
                 if not scenario_path.exists() or not scenario_path.is_dir():
-                    print(f"Warning: Scenario {scenario_path.name} not found or not a directory")
-                    continue
-
+                    raise FileNotFoundError(f"Scenario path not found: {scenario_path}")
                 # For mini dataset, scenario_path is already the run directory
                 run_dir = scenario_path
 
                 # Check if annotation directory exists
                 anno_dir = run_dir / "anno"
                 if not anno_dir.exists():
-                    continue
+                    raise FileNotFoundError(f"Annotation directory not found: {anno_dir}")
 
                 # Get all frame annotations
                 frames = sorted(anno_dir.glob("*.json.gz"))
 
                 if len(frames) == 0:
-                    continue
+                    raise ValueError(f"No frames found in scenario: {scenario_path}")
 
                 # Apply temporal downsampling (10Hz → 2Hz)
                 sampled_frames = frames[:: self.config.sampling_rate]

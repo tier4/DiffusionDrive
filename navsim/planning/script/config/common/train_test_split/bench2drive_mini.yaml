@@ -5,11 +5,13 @@ defaults:
   - _self_
 
 # Dataset parameters
-data_root: /workspace/Bench2Drive-mini
+# data_root: Not needed for cache-only training
 bev_cache_dir: /workspace/Bench2Drive-mini-full_bev_cache
 map_dir: /workspace/Bench2Drive-Map
 
 # Available scenarios in mini dataset with train/val splits
+# NOTE: These are mini-dataset-specific scenario instances (without v1/ prefix)
+# They don't match the official bench2drive_base_train_val_split.json
 scenarios:
   train: [
     "AccidentTwoWays_Town12_Route1444_Weather0",
