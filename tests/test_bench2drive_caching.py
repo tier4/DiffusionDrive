@@ -40,8 +40,8 @@ class TestBench2DriveCaching:
         token = scene_loader.get_scene_tokens()[0]
         scene = scene_loader.get_scene(token)
 
-        # Get agent input
-        agent_input = scene.get_agent_input(-1)
+        # Get agent input from current frame (NavSim convention)
+        agent_input = scene.get_agent_input(4)  # num_history_frames - 1
 
         # Create feature builder
         feature_builder = Bench2DriveFeatureBuilder(model_config)
@@ -92,8 +92,8 @@ class TestBench2DriveCaching:
             token = scene_loader.get_scene_tokens()[0]
             scene = scene_loader.get_scene(token)
 
-            # Get agent input
-            agent_input = scene.get_agent_input(-1)
+            # Get agent input from current frame (NavSim convention)
+            agent_input = scene.get_agent_input(4)  # num_history_frames - 1
 
             # Create builders
             feature_builder = Bench2DriveFeatureBuilder(model_config)

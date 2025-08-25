@@ -14,6 +14,7 @@ from navsim.common.bev_map_utils import (
     extract_lane_points,
     extract_trigger_points,
     transform_points_to_ego,
+    transform_heading_to_ego,
     ego_to_bev_pixels,
     filter_points_in_range,
     draw_lane_on_bev,
@@ -95,16 +96,54 @@ class TestCoordinateTransformations:
         """Test world to ego coordinate transformation."""
         points = np.array([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0]])
 
-        # Identity transformation
-        world2ego = np.eye(4)
-        points_ego = transform_points_to_ego(points, world2ego, left_to_right=True)
-        # Y-axis should be flipped due to left-to-right conversion
+        # Ego at origin with no rotation
+        ego_points = np.array([0.0, 0.0, 0.0])
+        ego_heading_rad = 0.0
+        points_ego = transform_points_to_ego(points, ego_points, ego_heading_rad, left_to_right=False)
+        # Test basic coordinate transformation (no axis flipping)
         assert np.allclose(points_ego[0], [10.0, 0.0, 0.0])
-        assert np.allclose(points_ego[1], [0.0, -10.0, 0.0])
+        assert np.allclose(points_ego[1], [0.0, 10.0, 0.0])
 
-        # Test with left_to_right=False
-        points_ego_no_flip = transform_points_to_ego(points, world2ego, left_to_right=False)
-        assert np.allclose(points_ego_no_flip[1], [0.0, 10.0, 0.0])
+        # Test with rotation (90 degrees)
+        ego_heading_rad_90 = np.pi/2
+        points_ego_rotated = transform_points_to_ego(points, ego_points, ego_heading_rad_90, left_to_right=False)
+        # After 90° rotation: [10,0,0] -> [0, -10, 0] and [0,10,0] -> [10, 0, 0]
+        assert np.allclose(points_ego_rotated[0], [0.0, -10.0, 0.0], atol=1e-10)
+        assert np.allclose(points_ego_rotated[1], [10.0, 0.0, 0.0], atol=1e-10)
+
+    def test_transform_heading_to_ego(self):
+        """Test heading transformation to ego coordinates."""
+        # Test normal case - no boundary crossing
+        ego_heading = np.radians(45)
+        obj_heading = np.radians(90)
+        relative = transform_heading_to_ego(obj_heading, ego_heading)
+        assert np.isclose(relative, np.radians(45))
+        
+        # Test crossing +180 boundary
+        ego_heading = np.radians(179)
+        obj_heading = np.radians(-179)
+        relative = transform_heading_to_ego(obj_heading, ego_heading)
+        # Should be normalized to +2° instead of -358°
+        assert np.isclose(relative, np.radians(2), atol=1e-5)
+        
+        # Test crossing -180 boundary  
+        ego_heading = np.radians(-179)
+        obj_heading = np.radians(179)
+        relative = transform_heading_to_ego(obj_heading, ego_heading)
+        # Should be normalized to -2° instead of +358°
+        assert np.isclose(relative, np.radians(-2), atol=1e-5)
+        
+        # Test without normalization
+        ego_heading = np.radians(179)
+        obj_heading = np.radians(-179)
+        relative_unnorm = transform_heading_to_ego(obj_heading, ego_heading, normalize=False)
+        assert np.isclose(relative_unnorm, np.radians(-358))
+        
+        # Test zero relative heading
+        ego_heading = np.radians(90)
+        obj_heading = np.radians(90)
+        relative = transform_heading_to_ego(obj_heading, ego_heading)
+        assert np.isclose(relative, 0.0, atol=1e-10)
 
     def test_get_ego_pixel_position(self):
         """Test ego position for different view types."""
@@ -559,22 +598,24 @@ class TestBEVGeneration:
         ego_position = (0.0, 0.0)
 
         # Test with dictionary (should create MapProcessor internally)
-        bev_map = generate_bev_from_map(map_data, world2ego, ego_position)
+        ego_points = np.array([0.0, 0.0, 0.0])
+        ego_heading_rad = 0.0
+        bev_map = generate_bev_from_map(map_data, ego_points, ego_heading_rad)
         assert bev_map.shape == (128, 256)
         assert np.any(bev_map > 0)
 
         # Test with pre-created MapProcessor
         processor = MapProcessor(map_data)
-        bev_map2 = generate_bev_from_map(processor, world2ego, ego_position)
+        bev_map2 = generate_bev_from_map(processor, ego_points, ego_heading_rad)
         assert bev_map2.shape == (128, 256)
 
     def test_generate_full_bev(self):
         """Test full 360-degree BEV generation."""
         map_data = self.create_mock_map_data()
-        world2ego = np.eye(4)
-        ego_position = (0.0, 0.0)
+        ego_points = np.array([0.0, 0.0, 0.0])
+        ego_heading_rad = 0.0
 
-        full_bev = generate_full_bev_from_map(map_data, world2ego, ego_position)
+        full_bev = generate_full_bev_from_map(map_data, ego_points, ego_heading_rad)
         assert full_bev.shape == (256, 256)
 
     def test_extract_front_half_bev(self):
@@ -642,10 +683,10 @@ class TestMapProcessor:
         }
 
         processor = MapProcessor(map_data)
-        world2ego = np.eye(4)
-        ego_position = (0.0, 0.0)
+        ego_points = np.array([0.0, 0.0, 0.0])
+        ego_heading_rad = 0.0
 
-        bev_map = processor.generate_bev(world2ego, ego_position)
+        bev_map = processor.generate_bev(ego_points, ego_heading_rad)
         assert bev_map.shape == (128, 256)
         assert np.any(bev_map > 0)
 
@@ -655,8 +696,9 @@ class TestMapProcessor:
         assert processor.lane_kdtree is None
         assert processor.trigger_kdtree is None
 
-        ego_position = (0.0, 0.0)
-        bev_map = processor.generate_bev(np.eye(4), ego_position)
+        ego_points = np.array([0.0, 0.0, 0.0])
+        ego_heading_rad = 0.0
+        bev_map = processor.generate_bev(ego_points, ego_heading_rad)
         assert np.all(bev_map == 0)
 
 
@@ -742,9 +784,10 @@ class TestEdgeCases:
     def test_empty_lane_segments(self):
         """Test handling of empty lane segments."""
         map_data = {"road1": {"lane1": [{"Points": [], "Type": "Solid"}]}}
-        ego_position = (0.0, 0.0)
+        ego_points = np.array([0.0, 0.0, 0.0])
+        ego_heading_rad = 0.0
 
-        bev_map = generate_bev_from_map(map_data, np.eye(4), ego_position)
+        bev_map = generate_bev_from_map(map_data, ego_points, ego_heading_rad)
         assert np.all(bev_map == 0)
 
     def test_invalid_lane_type(self):
@@ -795,17 +838,17 @@ class TestMaxDistanceCalculation:
             }
         }
         
-        world2ego = np.eye(4)
-        ego_position = (0.0, 0.0)
+        ego_points = np.array([0.0, 0.0, 0.0])
+        ego_heading_rad = 0.0
         
         # Test with small max_distance (50m) - should miss lane2
         bev_small_dist = generate_bev_from_map(
-            map_data, world2ego, ego_position, max_distance=50.0
+            map_data, ego_points, ego_heading_rad, max_distance=50.0
         )
         
         # Test with large max_distance (150m) - should catch both lanes
         bev_large_dist = generate_bev_from_map(
-            map_data, world2ego, ego_position, max_distance=150.0
+            map_data, ego_points, ego_heading_rad, max_distance=150.0
         )
         
         # The large max_distance should capture more lanes
@@ -844,12 +887,12 @@ class TestMaxDistanceCalculation:
             }
         }
         
-        world2ego = np.eye(4)
-        ego_position = (0.0, 0.0)
+        ego_points = np.array([0.0, 0.0, 0.0])
+        ego_heading_rad = 0.0
         
         # Generate with default max_distance
         bev_map = generate_bev_from_map(
-            map_data, world2ego, ego_position,
+            map_data, ego_points, ego_heading_rad,
             bev_height=bev_height, bev_width=bev_width, resolution=resolution
         )
         
@@ -908,8 +951,8 @@ class TestMaxDistanceCalculation:
         }
         
         processor = MapProcessor(map_data)
-        world2ego = np.eye(4)
-        ego_position = (0.0, 0.0)
+        ego_points = np.array([0.0, 0.0, 0.0])
+        ego_heading_rad = 0.0
         
         # Use B2D BEV resolution (0.332m/pixel for 85m coverage)
         bev_resolution = 0.332  # 85m / 256 pixels
@@ -918,7 +961,7 @@ class TestMaxDistanceCalculation:
         
         # Test with 20m max_distance - should only get near lane
         bev_20m = processor.generate_bev(
-            world2ego, ego_position, 
+            ego_points, ego_heading_rad, 
             bev_height=bev_height, bev_width=bev_width,
             resolution=bev_resolution, max_distance=20.0
         )
@@ -929,7 +972,7 @@ class TestMaxDistanceCalculation:
         
         # Test with 40m max_distance - should get near and medium  
         bev_40m = processor.generate_bev(
-            world2ego, ego_position,
+            ego_points, ego_heading_rad,
             bev_height=bev_height, bev_width=bev_width,
             resolution=bev_resolution, max_distance=40.0
         )
@@ -940,7 +983,7 @@ class TestMaxDistanceCalculation:
         
         # Test with 80m max_distance - should get all elements (trigger at 61m center)
         bev_80m = processor.generate_bev(
-            world2ego, ego_position,
+            ego_points, ego_heading_rad,
             bev_height=bev_height, bev_width=bev_width,
             resolution=bev_resolution, max_distance=80.0
         )
@@ -970,11 +1013,11 @@ class TestSemanticValidation:
         valid_bev[50:55, 50:55] = 4  # Static objects
         mock_processor.generate_bev.return_value = valid_bev
 
-        world2ego = np.eye(4)
-        ego_position = (0.0, 0.0)
+        ego_points = np.array([0.0, 0.0, 0.0])
+        ego_heading_rad = 0.0
 
         # Should not raise any exception
-        result = generate_bev_from_map(mock_processor, world2ego, ego_position)
+        result = generate_bev_from_map(mock_processor, ego_points, ego_heading_rad)
         assert result.shape == valid_bev.shape
         assert np.array_equal(result, valid_bev)
 
@@ -986,11 +1029,11 @@ class TestSemanticValidation:
         invalid_bev[10:20, 10:20] = 99  # Invalid class
         mock_processor.generate_bev.return_value = invalid_bev
 
-        world2ego = np.eye(4)
-        ego_position = (0.0, 0.0)
+        ego_points = np.array([0.0, 0.0, 0.0])
+        ego_heading_rad = 0.0
 
         with pytest.raises(ValueError, match="BEV map contains invalid semantic class values"):
-            generate_bev_from_map(mock_processor, world2ego, ego_position)
+            generate_bev_from_map(mock_processor, ego_points, ego_heading_rad)
 
     def test_multiple_invalid_semantic_classes(self):
         """Test error message with multiple invalid classes."""
@@ -1000,11 +1043,11 @@ class TestSemanticValidation:
         invalid_bev[20:25, 20:25] = 200  # Invalid class 2
         mock_processor.generate_bev.return_value = invalid_bev
 
-        world2ego = np.eye(4)
-        ego_position = (0.0, 0.0)
+        ego_points = np.array([0.0, 0.0, 0.0])
+        ego_heading_rad = 0.0
 
         with pytest.raises(ValueError) as exc_info:
-            generate_bev_from_map(mock_processor, world2ego, ego_position)
+            generate_bev_from_map(mock_processor, ego_points, ego_heading_rad)
 
         error_msg = str(exc_info.value)
         assert "99" in error_msg
@@ -1018,11 +1061,11 @@ class TestSemanticValidation:
         background_bev = np.zeros((64, 64), dtype=np.uint8)
         mock_processor.generate_bev.return_value = background_bev
 
-        world2ego = np.eye(4)
-        ego_position = (0.0, 0.0)
+        ego_points = np.array([0.0, 0.0, 0.0])
+        ego_heading_rad = 0.0
 
         # Should not raise any exception
-        result = generate_bev_from_map(mock_processor, world2ego, ego_position)
+        result = generate_bev_from_map(mock_processor, ego_points, ego_heading_rad)
         assert np.all(result == 0)
 
 
