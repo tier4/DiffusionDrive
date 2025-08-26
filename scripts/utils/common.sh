@@ -82,7 +82,7 @@ build_training_args() {
     # Set cache path based on dataset type
     local cache_path
     if [[ "$dataset" == "bench2drive" ]]; then
-        cache_path="${NAVSIM_CACHE_ROOT}/Bench2Drive-Base_training_cache/"
+        cache_path="${NAVSIM_CACHE_ROOT}/Bench2Drive-Base-training_cache-v2/"
     elif [[ "$dataset" == "bench2drive_mini" ]]; then
         cache_path="${NAVSIM_CACHE_ROOT}/Bench2Drive-mini_training_cache/"
     else
@@ -103,10 +103,10 @@ build_training_args() {
     )
 
     # Add dataset-specific configuration for diffusiondrive agents
-    if [[ "$agent" == "diffusiondrive_agent" ]] || [[ "$agent" == "diffusiondrive_agent_extended" ]]; then
+    if [[ "$agent" == "diffusiondrive_agent" ]] || [[ "$agent" == "diffusiondrive_agent_b2d" ]]; then
         # Add plan anchor path based on dataset
         if [[ "$dataset" == "bench2drive"* ]]; then
-            TRAINING_ARGS+=("agent.config.plan_anchor_path=${NAVSIM_DEVKIT_ROOT}/download/kmeans_bench2drive_traj_20.npy")
+            TRAINING_ARGS+=("agent.config.plan_anchor_path=${NAVSIM_DEVKIT_ROOT}/download/kmeans_b2d_v2_traj_20.npy")
         else
             TRAINING_ARGS+=("agent.config.plan_anchor_path=${NAVSIM_DEVKIT_ROOT}/download/kmeans_navsim_traj_20.npy")
         fi
@@ -114,11 +114,11 @@ build_training_args() {
         # Add backbone path
         TRAINING_ARGS+=("agent.config.bkb_path=${NAVSIM_DEVKIT_ROOT}/download/pytorch_model.bin")
 
-        # Add dataset type for extended agent only
-        if [[ "$agent" == "diffusiondrive_agent_extended" ]]; then
-            if [[ "$dataset" == "bench2drive"* ]]; then
-                TRAINING_ARGS+=("agent.config.dataset_type=bench2drive")
-            else
+        # Add dataset type for B2D agent (it has normalization support)
+        if [[ "$agent" == "diffusiondrive_agent_b2d" ]]; then
+            # B2D agent already has dataset_type=bench2drive in its config
+            # But we can override if needed for other datasets
+            if [[ "$dataset" != "bench2drive"* ]]; then
                 TRAINING_ARGS+=("agent.config.dataset_type=navsim")
             fi
         fi

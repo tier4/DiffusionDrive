@@ -51,6 +51,10 @@ trainer:
     default_root_dir: ${output_dir}
 
   callbacks:
+    # Time logging callback for tracking training/validation time
+    - _target_: navsim.planning.training.callbacks.time_logging_callback.TimeLoggingCallback
+    
+    # Model checkpointing callback
     - _target_: pytorch_lightning.callbacks.ModelCheckpoint
 
       # Your desired checkpointing logic

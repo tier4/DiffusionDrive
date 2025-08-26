@@ -16,8 +16,15 @@ from navsim.common.bench2drive_constants import (
     BEV_SEMANTIC_RESOLUTION,
     NUM_FUTURE_WAYPOINTS,
     MAX_AGENTS,
+    BENCH2DRIVE_LIDAR_RANGE_M,
 )
-from navsim.common.bev_map_utils import load_map_data, generate_bev_from_map
+from navsim.common.bev_map_utils import (
+    load_map_data,
+    generate_bev_from_map,
+    transform_points_to_ego,
+    transform_heading_to_ego,
+)
+from navsim.planning.simulation.planner.pdm_planner.utils.pdm_geometry_utils import normalize_angle
 
 # Import the real dataclasses
 from navsim.common.dataclasses import Camera as CameraDataclass, Cameras, Lidar
@@ -49,6 +56,7 @@ class LiDAR:
         self.lidar_pc = lidar_pc
 
 
+# TODO: should use coodinates system as ENUM
 class Bench2DriveScene:
     """
     Scene representation for Bench2Drive dataset.
@@ -102,9 +110,9 @@ class Bench2DriveScene:
         Returns:
             AgentInput object with cameras, lidars, and ego statuses
         """
-        # Default to last frame (current frame in sequence)
+        # Default to current frame (NavSim convention: middle frame)
         if frame_idx == -1:
-            frame_idx = self.history_frames
+            frame_idx = self.history_frames - 1
 
         # Prepare lists for multi-frame data
         cameras_list = []
@@ -287,13 +295,13 @@ class Bench2DriveScene:
         if ego_box is None:
             raise ValueError(f"Ego vehicle not found in bounding boxes for frame")
 
-        # Use bounding box location for position
-        ego_x = ego_box["location"][0]
-        ego_y = ego_box["location"][1]
+        # Use bounding box center for position
+        ego_x = ego_box["center"][0]
+        ego_y = ego_box["center"][1]
 
         # Extract yaw from rotation (z-component)
         ego_yaw_degrees = ego_box["rotation"][2]
-        ego_heading = -np.radians(ego_yaw_degrees)  # CW to CCW conversion
+        ego_heading = np.radians(ego_yaw_degrees)  # Keep CARLA CW convention
 
         # For velocity, use the correct heading
         theta_rad = np.radians(ego_yaw_degrees)
@@ -301,7 +309,7 @@ class Bench2DriveScene:
         # Extract velocity (m/s)
         speed = anno["speed"]
         vx = speed * np.cos(theta_rad)
-        vy = speed * np.sin(theta_rad)
+        vy = -speed * np.sin(theta_rad)  # Negative for CARLA CW rotation
         ego_velocity = np.array([vx, vy], dtype=np.float32)
 
         # Extract acceleration (m/s²)
@@ -336,7 +344,7 @@ class Bench2DriveScene:
             Trajectory tensor [num_waypoints, 3] with (x, y, heading)
         """
         if frame_idx == -1:
-            frame_idx = self.history_frames
+            frame_idx = self.history_frames - 1  # NavSim convention: use middle frame
 
         # Collect future positions
         trajectory = []
@@ -346,12 +354,9 @@ class Bench2DriveScene:
 
         # Find ego vehicle in bounding boxes - REQUIRED
         ego_box = None
-        world2ego_matrix = None
         for box in current_anno["bounding_boxes"]:
             if box["class"] == "ego_vehicle":
                 ego_box = box
-                # Get world2ego transformation matrix
-                world2ego_matrix = np.array(box["world2ego"])
                 break
 
         if ego_box is None:
@@ -359,63 +364,69 @@ class Bench2DriveScene:
                 f"Ego vehicle not found in bounding boxes for trajectory frame {frame_idx}"
             )
 
-        # Use ego bounding box information
-        current_x = ego_box["location"][0]
-        current_y = ego_box["location"][1]
-        current_theta = -np.radians(ego_box["rotation"][2])  # CW to CCW
+        # Get current heading with normalization
+        ego_heading_deg = ego_box["rotation"][2]
+        ego_heading_rad = normalize_angle(np.radians(ego_heading_deg))
+
+        # Get current position
+        ego_position_world = np.array(ego_box["center"])  # [x, y, z] in world coordinates
 
         # Sample future frames (consecutive frames at 0.5s intervals)
         # The dataloader's sampling_rate already ensures correct temporal spacing
-        for i in range(1, NUM_FUTURE_WAYPOINTS + 1):  # NUM_FUTURE_WAYPOINTS future waypoints
+        # Limit to available frames to prevent out-of-bounds errors
+        max_future_frames = min(NUM_FUTURE_WAYPOINTS, len(self.anno_paths) - frame_idx - 1)
+
+        for i in range(1, max_future_frames + 1):
             future_idx = frame_idx + i
 
-            if future_idx < len(self.anno_paths):
-                future_anno = self._load_annotation(future_idx)
+            # Double-check bounds (should not fail with the limit above)
+            if future_idx >= len(self.anno_paths):
+                logger.warning(
+                    f"Stopping trajectory at {len(trajectory)} waypoints "
+                    f"due to insufficient future frames"
+                )
+                break
 
-                # Find future ego position
-                future_ego_box = None
-                for box in future_anno["bounding_boxes"]:
-                    if box["class"] == "ego_vehicle":
-                        future_ego_box = box
-                        break
+            future_anno = self._load_annotation(future_idx)
 
-                if future_ego_box is None:
-                    raise ValueError(f"Ego vehicle not found in future frame {future_idx}")
+            # Find future ego position
+            future_ego_box = None
+            for box in future_anno["bounding_boxes"]:
+                if box["class"] == "ego_vehicle":
+                    future_ego_box = box
+                    break
 
-                future_x = future_ego_box["location"][0]
-                future_y = future_ego_box["location"][1]
-                future_theta = -np.radians(future_ego_box["rotation"][2])
+            if future_ego_box is None:
+                raise ValueError(f"Ego vehicle not found in future frame {future_idx}")
 
-                # Convert to ego-centric coordinates using world2ego matrix if available
-                if world2ego_matrix is not None:
-                    # Transform future position using world2ego matrix
-                    future_world = np.array([future_x, future_y, 0.0, 1.0])
-                    future_ego = world2ego_matrix @ future_world
-                    ego_x = future_ego[0]
-                    ego_y = future_ego[1]
-                else:
-                    # Fallback to manual transformation
-                    dx = future_x - current_x
-                    dy = future_y - current_y
+            # 2. Transform Heading using standardized function with normalization
+            future_heading_deg = future_ego_box["rotation"][2]
+            future_heading_rad = normalize_angle(np.radians(future_heading_deg))
+            future_heading_in_ego = transform_heading_to_ego(
+                future_heading_rad, ego_heading_rad, normalize=True
+            )
 
-                    # Rotate to ego frame
-                    cos_theta = np.cos(-current_theta)
-                    sin_theta = np.sin(-current_theta)
+            # transform to ego position in carla
+            # I did not using the world2ego cause after investigation
+            # confirm that the accuracy is bad
+            future_world_position = np.array(future_ego_box["center"])
+            future_x_in_ego, future_y_in_ego, _ = transform_points_to_ego(
+                points=future_world_position,
+                ego_points=ego_position_world,
+                ego_heading_rad=ego_heading_rad,
+            ).tolist()[0]
 
-                    ego_x = dx * cos_theta - dy * sin_theta
-                    ego_y = dx * sin_theta + dy * cos_theta
+            trajectory.append([future_x_in_ego, future_y_in_ego, future_heading_in_ego])
 
-                ego_heading = future_theta - current_theta
-                # Normalize heading to [-pi, pi]
-                ego_heading = np.arctan2(np.sin(ego_heading), np.cos(ego_heading))
-
-                trajectory.append([ego_x, ego_y, ego_heading])
+        # Pad trajectory with final position if we have fewer than NUM_FUTURE_WAYPOINTS
+        if len(trajectory) < NUM_FUTURE_WAYPOINTS:
+            if len(trajectory) > 0:
+                # Extend trajectory by repeating the last waypoint
+                last_waypoint = trajectory[-1]
+                while len(trajectory) < NUM_FUTURE_WAYPOINTS:
+                    trajectory.append(last_waypoint.copy())
             else:
-                # Extrapolate last known position if we run out of frames
-                if trajectory:
-                    trajectory.append(trajectory[-1])
-                else:
-                    trajectory.append([0.0, 0.0, 0.0])
+                raise ValueError(f"No future frames available from frame {frame_idx}")
 
         return torch.tensor(trajectory, dtype=torch.float64)
 
@@ -429,18 +440,15 @@ class Bench2DriveScene:
             agent_types: Tensor [max_agents] with NavSim class IDs for BEV rendering
         """
         if frame_idx == -1:
-            frame_idx = self.history_frames
+            frame_idx = self.history_frames - 1  # NavSim convention: use middle frame
 
         anno = self._load_annotation(frame_idx)
 
         # Find ego vehicle in bounding boxes - REQUIRED
         ego_box = None
-        world2ego_matrix = None
         for box in anno["bounding_boxes"]:
             if box["class"] == "ego_vehicle":
                 ego_box = box
-                # Get world2ego transformation matrix
-                world2ego_matrix = np.array(box["world2ego"])
                 break
 
         if ego_box is None:
@@ -448,10 +456,10 @@ class Bench2DriveScene:
                 f"Ego vehicle not found in bounding boxes for agents frame {frame_idx}"
             )
 
-        # Use ego bounding box information
-        ego_x = ego_box["location"][0]
-        ego_y = ego_box["location"][1]
-        ego_theta = -np.radians(ego_box["rotation"][2])  # CW to CCW
+        # Get ego position and heading for coordinate transforms
+        ego_points = np.array(ego_box["center"])  # [x, y, z] in world coordinates
+        ego_heading_deg = ego_box["rotation"][2]  # Current ego heading in degrees
+        ego_heading_rad = normalize_angle(np.radians(ego_heading_deg))
 
         # Process vehicles from bounding_boxes
         max_agents = MAX_AGENTS  # Maximum number of agents to track
@@ -459,145 +467,100 @@ class Bench2DriveScene:
         agent_labels = np.zeros(max_agents, dtype=bool)
         agent_types = np.zeros(max_agents, dtype=np.int32)  # NavSim class IDs
 
-        bboxes = anno.get("bounding_boxes", [])
+        bboxes = anno["bounding_boxes"]  # Required field - fail fast if missing
         agent_idx = 0
 
-        # Handle both list and dict formats
+        # Normalize bboxes format and process objects uniformly
+        objects_to_process = []
+
         if isinstance(bboxes, list):
             # List format (Bench2Drive mini dataset)
             for obj in bboxes:
-                if agent_idx >= max_agents:
-                    break
+                obj_class = obj["class"]  # Required field - fail fast if missing
 
-                # Get object class and map to NavSim type
-                obj_class = obj.get("class", "")
-                navsim_class = B2D_CLASS_TO_NAVSIM.get(obj_class, -1)
-
-                # Skip ego vehicle or unmapped classes
-                if navsim_class == -1:
+                # Skip ego vehicle and traffic elements
+                if obj_class == "ego_vehicle":
                     continue
+                if obj_class in ["traffic_light", "traffic_sign"]:
+                    continue  # Already drawn on static BEV maps
 
-                # Only process vehicles (5) and pedestrians (6)
-                if navsim_class in [5, 6]:
-                    # Extract position
-                    if isinstance(obj.get("location"), list):
-                        obj_x, obj_y, obj_z = obj["location"]
-                    else:
-                        loc = obj.get("location", {})
-                        obj_x = loc.get("x", 0.0)
-                        obj_y = loc.get("y", 0.0)
-
-                    # Convert to ego-centric using world2ego matrix if available
-                    if world2ego_matrix is not None and "world2ego" in obj:
-                        # Use object's world2ego matrix for transformation
-                        obj_world = np.array([obj_x, obj_y, 0.0, 1.0])
-                        obj_ego = world2ego_matrix @ obj_world
-                        ego_centric_x = obj_ego[0]
-                        ego_centric_y = obj_ego[1]
-                    else:
-                        # Fallback to manual transformation
-                        dx = obj_x - ego_x
-                        dy = obj_y - ego_y
-
-                        cos_theta = np.cos(-ego_theta)
-                        sin_theta = np.sin(-ego_theta)
-
-                        ego_centric_x = dx * cos_theta - dy * sin_theta
-                        ego_centric_y = dx * sin_theta + dy * cos_theta
-
-                    # Filter by lidar range (32m)
-                    distance = np.sqrt(ego_centric_x**2 + ego_centric_y**2)
-                    if distance > 32.0:
-                        continue
-
-                    # Extract rotation and convert to ego-centric
-                    if isinstance(obj.get("rotation"), list):
-                        obj_yaw_degrees = obj["rotation"][2]
-                    else:
-                        obj_yaw_degrees = obj.get("rotation", {}).get("yaw", 0.0)
-                    obj_yaw = -np.radians(obj_yaw_degrees)
-                    ego_centric_yaw = obj_yaw - ego_theta
-
-                    # Extract size or use defaults based on type
-                    if navsim_class == 6:  # Pedestrian
-                        length = 0.8  # Pedestrian length
-                        width = 0.6  # Pedestrian width
-                    else:  # Vehicle
-                        length = 4.0  # Default car length
-                        width = 1.8  # Default car width
-
-                    # Store agent state
-                    agent_states[agent_idx] = [
-                        ego_centric_x,
-                        ego_centric_y,
-                        ego_centric_yaw,
-                        length,
-                        width,
-                    ]
-                    agent_labels[agent_idx] = True
-                    agent_types[agent_idx] = navsim_class
-                    agent_idx += 1
+                # Only process vehicles and pedestrians (dynamic objects)
+                if obj_class in ["vehicle", "walker"]:
+                    navsim_class = B2D_CLASS_TO_NAVSIM[obj_class]
+                    objects_to_process.append((obj, obj_class, navsim_class))
 
         elif isinstance(bboxes, dict):
             # Dict format (original expected format)
-            for obj_type in ["vehicle", "pedestrian"]:
-                navsim_class = 5 if obj_type == "vehicle" else 6
+            ego_id = bboxes.get("ego_vehicle", {}).get("id")
+            for obj_type in ["vehicle", "walker"]:  # Fixed: pedestrians are "walker"
                 if obj_type in bboxes:
+                    navsim_class = B2D_CLASS_TO_NAVSIM[obj_type]
                     for obj in bboxes[obj_type]:
-                        if agent_idx >= max_agents:
-                            break
-
-                        # Skip static vehicles or ego
-                        if obj.get("state") == "static" or obj.get("id") == bboxes.get(
-                            "ego_vehicle", {}
-                        ).get("id"):
+                        # Skip ego vehicle
+                        if obj.get("id") == ego_id:
                             continue
+                        objects_to_process.append((obj, obj_type, navsim_class))
 
-                        # Extract position (keep in CARLA coordinates)
-                        loc = obj.get("location", {})
-                        obj_x = loc.get("x", 0.0)
-                        obj_y = loc.get("y", 0.0)
+        # Process all objects with unified logic
+        for obj, obj_class, navsim_class in objects_to_process:
+            if agent_idx >= max_agents:
+                break
 
-                        # Convert to ego-centric
-                        dx = obj_x - ego_x
-                        dy = obj_y - ego_y
+            # Use center coordinates for reliable world position (comprehensive fix plan)
+            obj_center = obj["center"]  # [x, y, z] in world coordinates
+            obj_world_pos = np.array([[obj_center[0], obj_center[1], obj_center[2]]])
 
-                        cos_theta = np.cos(-ego_theta)
-                        sin_theta = np.sin(-ego_theta)
+            # Transform to ego coordinates using standard function
+            ego_coords = transform_points_to_ego(
+                obj_world_pos, ego_points, ego_heading_rad, left_to_right=False
+            )
+            ego_centric_x = ego_coords[0, 0]
+            ego_centric_y = ego_coords[0, 1]
 
-                        ego_centric_x = dx * cos_theta - dy * sin_theta
-                        ego_centric_y = dx * sin_theta + dy * cos_theta
+            # Use annotation distance instead of manual calculation (comprehensive fix plan)
+            distance = obj["distance"]  # Pre-calculated distance to ego
+            if distance > BENCH2DRIVE_LIDAR_RANGE_M:  # Filter by actual B2D LiDAR range (85m)
+                continue
 
-                        # Filter by lidar range (32m)
-                        distance = np.sqrt(ego_centric_x**2 + ego_centric_y**2)
-                        if distance > 32.0:
-                            continue
+            # Extract rotation and convert to ego-centric using simpler angle subtraction
+            rotation = obj["rotation"]  # Required field - fail fast if missing
+            if isinstance(rotation, list):
+                obj_yaw_degrees = rotation[2]  # Yaw is at index 2: [pitch, roll, yaw]
+            else:
+                obj_yaw_degrees = rotation["yaw"]  # Dict format
+            # Transform heading to ego-centric coordinates with normalization
+            obj_yaw_rad = np.radians(obj_yaw_degrees)
+            ego_centric_yaw = transform_heading_to_ego(
+                obj_yaw_rad, ego_heading_rad, normalize=True
+            )
 
-                        # Extract rotation and convert to ego-centric
-                        rot = obj.get("rotation", {})
-                        obj_yaw = -np.radians(rot.get("yaw", 0.0))  # Convert to radians CCW
-                        ego_centric_yaw = obj_yaw - ego_theta
+            # Extract size from extent field (comprehensive fix plan)
+            extent = obj["extent"]  # Required field - fail fast if missing
+            if isinstance(extent, list):
+                # extent = [half_length, half_width, half_height]
+                length = 2 * extent[0]  # Full length = 2 * half_length
+                width = 2 * extent[1]  # Full width = 2 * half_width
+            else:
+                # Dict format: extent = {"x": half_length, "y": half_width, "z": half_height}
+                length = 2 * extent["x"]  # Full length = 2 * half_length
+                width = 2 * extent["y"]  # Full width = 2 * half_width
 
-                        # Extract size (extent in CARLA is half-size)
-                        extent = obj.get("extent", {})
-                        if navsim_class == 6:  # Pedestrian
-                            length = min(2 * extent.get("x", 0.4), 0.8)  # Cap pedestrian size
-                            width = min(2 * extent.get("y", 0.3), 0.6)
-                        else:
-                            length = 2 * extent.get("x", 2.5)  # Default car length
-                            width = 2 * extent.get("y", 1.0)  # Default car width
+            # Apply size limits for pedestrians to prevent unrealistic dimensions
+            if navsim_class == 6:  # Pedestrian
+                length = min(length, 0.8)  # Cap pedestrian length
+                width = min(width, 0.6)  # Cap pedestrian width
 
-                        # Store agent state
-                        agent_states[agent_idx] = [
-                            ego_centric_x,
-                            ego_centric_y,
-                            ego_centric_yaw,
-                            length,
-                            width,
-                        ]
-                        agent_labels[agent_idx] = True
-                        agent_types[agent_idx] = navsim_class
-                        agent_idx += 1
+            # Store agent state
+            agent_states[agent_idx] = [
+                ego_centric_x,
+                ego_centric_y,
+                ego_centric_yaw,
+                length,
+                width,
+            ]
+            agent_labels[agent_idx] = True
+            agent_types[agent_idx] = navsim_class
+            agent_idx += 1
 
         return (
             torch.from_numpy(agent_states),
@@ -605,7 +568,6 @@ class Bench2DriveScene:
             torch.from_numpy(agent_types),
         )
 
-    # TODO: Check this BEV map logic carefully
     def get_bev_semantic_map(self, frame_idx: int = -1) -> torch.Tensor:
         """
         Get BEV semantic segmentation map.
@@ -674,21 +636,28 @@ class Bench2DriveScene:
                     # Get world2ego transform and ego position
                     anno = self._load_annotation(frame_idx)
                     if anno and "bounding_boxes" in anno:
-                        ego_vehicle = anno["bounding_boxes"][0]
-                        if ego_vehicle["class"] != "ego_vehicle":
-                            raise ValueError(
-                                f"Expected ego_vehicle but got {ego_vehicle['class']}"
-                            )
+                        # Find ego vehicle in bounding boxes
+                        ego_vehicle = None
+                        for box in anno["bounding_boxes"]:
+                            if box["class"] == "ego_vehicle":
+                                ego_vehicle = box
+                                break
 
-                        world2ego = np.array(ego_vehicle["world2ego"])
-                        ego_position = (ego_vehicle["location"][0], ego_vehicle["location"][1])
+                        if ego_vehicle is None:
+                            raise ValueError("Ego vehicle not found in bounding boxes")
+
+                        ego_points = np.array(
+                            ego_vehicle["center"]
+                        )  # [x, y, z] in world coordinates
+                        ego_heading_rad = np.radians(
+                            ego_vehicle["rotation"][2]
+                        )  # Convert degrees to radians
 
                         # Generate BEV from map
-                        # TODO: But with no road in BEV
                         map_bev = generate_bev_from_map(
                             map_data=map_data,
-                            world2ego=world2ego,
-                            ego_position=ego_position,
+                            ego_points=ego_points,
+                            ego_heading_rad=ego_heading_rad,
                             bev_height=BEV_SEMANTIC_HEIGHT,
                             bev_width=BEV_SEMANTIC_WIDTH,
                             resolution=BEV_SEMANTIC_RESOLUTION,  # 0.332m/pixel for 85m coverage

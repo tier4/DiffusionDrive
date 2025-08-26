@@ -117,6 +117,7 @@ navsim_workspace
 logs/
 *.bin
 *.npy
+bin/
 
 # Claude-related files
 .claude/
@@ -126,6 +127,7 @@ CLAUDE.md
 *.tgz
 *.tar.gz
 download/openscene-v1.1/
+download/*.json
 
 # Personal/local configuration files
 .local/

@@ -20,10 +20,21 @@ import time
 
 import ray
 from tqdm import tqdm
+from omegaconf import DictConfig, OmegaConf
 
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+def load_bench2drive_config() -> DictConfig:
+    """Load Bench2Drive configuration from YAML config."""
+    config_file = Path(__file__).parent.parent / "navsim" / "planning" / "script" / "config" / "common" / "train_test_split" / "bench2drive.yaml"
+    
+    if not config_file.exists():
+        raise FileNotFoundError(f"Config file not found: {config_file}")
+    
+    return OmegaConf.load(config_file)
 
 
 # TODO: Should mention I can only use cache now in the training script
@@ -35,6 +46,7 @@ class SceneProcessor:
         """Initialize the processor with configurations."""
         # Create scene loader
         self.scene_loader = Bench2DriveSceneLoader(config)
+        self.config = config
 
         # Create feature and target builders
         self.feature_builder = Bench2DriveFeatureBuilder(model_config)
@@ -51,8 +63,10 @@ class SceneProcessor:
             # Load scene
             scene = self.scene_loader.get_scene(token)
 
-            # Get agent input for the last frame (where we have full history)
-            agent_input = scene.get_agent_input(-1)
+            # Get agent input for the current frame (NavSim convention: num_history_frames - 1)
+            # This ensures features and BEV align with the same temporal position
+            current_frame_idx = self.config.num_history_frames - 1  # Frame 4 with 4 history frames
+            agent_input = scene.get_agent_input(current_frame_idx)
 
             # Compute features
             features = self.feature_builder.compute_features(agent_input)
@@ -101,6 +115,7 @@ def cache_bench2drive_dataset(
     map_dir: Path = None,
     scenarios: List[str] = None,
     num_workers: int = None,
+    use_config_file: bool = True,
 ) -> None:
     """
     Cache Bench2Drive dataset for training using Ray for parallel processing.
@@ -112,6 +127,7 @@ def cache_bench2drive_dataset(
         map_dir: Optional path to HD maps
         scenarios: List of scenarios to cache (None = all)
         num_workers: Number of parallel workers (None = auto)
+        use_config_file: Whether to load parameters from bench2drive.yaml (default: True)
     """
     # Initialize Ray if not already initialized
     if not ray.is_initialized():
@@ -128,23 +144,43 @@ def cache_bench2drive_dataset(
         logger.info(f"Found {len(scenarios)} scenarios in {data_root}")
 
     # Create configuration
-    # NOTE: With sampling_rate=5, data is already at 2Hz (0.5s per frame)
-    # For trajectory, we need history_frames + 8 future waypoints
-    # Since data is at 2Hz, each frame is already 0.5s apart, so we need:
-    # - 4 history frames
-    # - 8 future frames (for 8 waypoints at 0.5s intervals)
-    # Total: 12 frames minimum
-    config = Bench2DriveConfig(
-        data_root=data_root,
-        scenarios=scenarios,
-        sampling_rate=5,  # 10Hz -> 2Hz (each frame is 0.5s)
-        num_frames=30,  # 15 seconds at 2Hz
-        num_history_frames=4,
-        num_future_frames=26,  # Plenty for 8 waypoints
-        extract_tar=False,
-        map_dir=map_dir,
-        bev_cache_dir=bev_cache_dir,
-    )
+    if use_config_file:
+        # Load parameters from bench2drive.yaml config
+        yaml_config = load_bench2drive_config()
+        bench2drive_config = yaml_config.bench2drive
+        scene_filter = yaml_config.scene_filter
+        
+        logger.info(f"Using config from bench2drive.yaml:")
+        logger.info(f"  sampling_rate: {bench2drive_config.sampling_rate}")
+        logger.info(f"  num_frames: {bench2drive_config.num_frames}")
+        logger.info(f"  num_history_frames: {bench2drive_config.num_history_frames}")
+        logger.info(f"  num_future_frames: {bench2drive_config.num_future_frames}")
+        
+        config = Bench2DriveConfig(
+            data_root=data_root,
+            scenarios=scenarios,
+            sampling_rate=bench2drive_config.sampling_rate,
+            num_frames=bench2drive_config.num_frames,
+            num_history_frames=bench2drive_config.num_history_frames,
+            num_future_frames=bench2drive_config.num_future_frames,
+            extract_tar=bench2drive_config.extract_tar,
+            map_dir=map_dir,
+            bev_cache_dir=bev_cache_dir,
+        )
+    else:
+        # Fallback to hardcoded values (legacy behavior)
+        logger.warning("Using hardcoded configuration values (legacy mode)")
+        config = Bench2DriveConfig(
+            data_root=data_root,
+            scenarios=scenarios,
+            sampling_rate=5,  # 10Hz -> 2Hz (each frame is 0.5s)
+            num_frames=30,  # 15 seconds at 2Hz
+            num_history_frames=4,
+            num_future_frames=26,  # Plenty for 8 waypoints
+            extract_tar=False,
+            map_dir=map_dir,
+            bev_cache_dir=bev_cache_dir,
+        )
 
     # Create scene loader to get tokens
     scene_loader = Bench2DriveSceneLoader(config)
@@ -271,6 +307,11 @@ def main():
     parser.add_argument(
         "--ray-address", type=str, default=None, help="Ray cluster address (default: local)"
     )
+    parser.add_argument(
+        "--use-hardcoded-config",
+        action="store_true",
+        help="Use hardcoded config values instead of loading from bench2drive.yaml (legacy mode)",
+    )
 
     args = parser.parse_args()
 
@@ -311,6 +352,7 @@ def main():
             map_dir=args.map_dir,
             scenarios=args.scenarios,
             num_workers=args.num_workers,
+            use_config_file=not args.use_hardcoded_config,
         )
     finally:
         # Shutdown Ray if we initialized it

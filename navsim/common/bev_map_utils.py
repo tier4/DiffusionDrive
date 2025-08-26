@@ -1,29 +1,17 @@
-"""
-Utilities for generating BEV semantic maps from Bench2Drive vectorized map data.
-
-This module handles the generation of BEV semantic maps using lane lines and
-trigger volumes from Bench2Drive HD maps.
-
-The module provides two implementations:
-1. MapProcessor (default): High-performance implementation using KDTree for spatial queries
-2. Legacy functions: Original implementation for compatibility and testing
-
-Map structure of Bench2Drive map:
-https://github.com/Thinklab-SJTU/Bench2Drive/blob/21d85eebcc219e058eaed02c95ce9d694b4a9175/docs/anno.md#hd-map-data-structure
-
-"""
-
-import numpy as np
-import cv2
-from typing import Dict, List, Tuple, Optional, Union, TYPE_CHECKING
-
-from pathlib import Path
-import logging
-from scipy.spatial import KDTree
 from navsim.common.bench2drive_constants import (
     LANE_TYPE_TO_BEV_CLASS,
     TRIGGER_TYPE_TO_BEV_CLASS,
 )
+
+import numpy as np
+import cv2
+from pathlib import Path
+import logging
+from scipy.spatial import KDTree
+
+from typing import Dict, Tuple, Optional, Union
+from navsim.planning.simulation.planner.pdm_planner.utils.pdm_geometry_utils import normalize_angle
+from navsim.common.bench2drive_constants import BEV_SEMANTIC_RESOLUTION
 
 logger = logging.getLogger(__name__)
 
@@ -67,24 +55,24 @@ def calculate_recommended_max_distance(
     bev_width: int,
     resolution: float,
     view_type: str = BEV_VIEW_FRONT,
-    safety_factor: float = 2.5,
+    safety_factor: float = 8,
 ) -> float:
     """
     Calculate recommended max_distance for KDTree queries based on BEV coverage.
-    
+
     The max_distance needs to be larger than the actual BEV visible range because:
     1. Lane segments are indexed by their center points in the KDTree
     2. A lane segment with center far from ego might still pass through the BEV area
     3. Curved roads can have segment centers significantly offset from the actual lane path
-    
+
     Args:
         bev_height: Height of BEV map in pixels
         bev_width: Width of BEV map in pixels
         resolution: Meters per pixel
         view_type: Type of BEV view (front, rear, or full)
-        safety_factor: Multiplier to ensure we capture all relevant lanes (default 2.5)
+        safety_factor: Multiplier to ensure we capture all relevant lanes (default 8)
                       Higher values capture more distant lane segments but may reduce performance
-    
+
     Returns:
         Recommended max_distance in meters
     """
@@ -97,21 +85,21 @@ def calculate_recommended_max_distance(
         # For full view, coverage is bidirectional
         longitudinal_range = bev_height * resolution
         lateral_range = bev_width * resolution
-    
+
     # Calculate diagonal distance from ego to farthest visible corner
     # This is the minimum distance needed to see all BEV area
-    diagonal_distance = np.sqrt(longitudinal_range**2 + (lateral_range/2)**2)
-    
+    diagonal_distance = np.sqrt(longitudinal_range**2 + (lateral_range / 2) ** 2)
+
     # Apply safety factor to account for:
     # - Lane segments with centers outside BEV but passing through it
     # - Curved roads where segment centers are offset
     # - Discrete sampling of continuous lanes
     recommended_distance = diagonal_distance * safety_factor
-    
+
     # Ensure minimum distance for urban scenarios
     # (intersections, roundabouts often need wider search)
     min_distance = 100.0
-    
+
     return max(recommended_distance, min_distance)
 
 
@@ -176,7 +164,7 @@ def extract_trigger_points(trigger: Dict) -> Tuple[np.ndarray, str]:
 
 
 def transform_points_to_ego(
-    points: np.ndarray, world2ego: np.ndarray, left_to_right: bool = False
+    points: np.ndarray, ego_points: np.ndarray, ego_heading_rad: float, left_to_right: bool = False
 ) -> np.ndarray:
     """
     Transform points from world coordinates to ego-centric coordinates.
@@ -185,28 +173,70 @@ def transform_points_to_ego(
 
     Args:
         points: Nx3 array of points in world coordinates
-        world2ego: 4x4 transformation matrix from world to ego
+        ego_points: (3,) array of ego position in world coordinates [x, y, z]
+        ego_heading_rad: Current ego heading in radians
         left_to_right: Whether to convert from left-handed to right-handed
 
     Returns:
         Nx3 array of points in ego-centric coordinates
     """
-    logger.debug(
-        f"Transforming {len(points)} points to "
-        f"ego coordinates with left_to_right={left_to_right}"
-    )
-    # Convert to homogeneous coordinates
-    points_h = np.concatenate([points, np.ones((len(points), 1))], axis=1)
+    if points.shape[-1] != 3 or not (points.ndim == 2 or points.ndim == 1):
+        raise ValueError(
+            f"Points must be Nx3 array with (x, y, z) coordinates. Instead got {points.shape}"
+        )
+    if ego_points.shape[0] != 3 or ego_points.ndim != 1:
+        raise ValueError(f"Ego points must be a 3-element array. Instead got {ego_points.shape}")
 
-    # Apply transformation
-    points_ego_h = points_h @ world2ego.T
-    points_ego = points_ego_h[:, :3]
+    if points.ndim == 1:
+        points = points.reshape(1, -1)  # Ensure points is Nx3
+
+    ego_x_world, ego_y_world, ego_z_world = ego_points
+
+    # Calculate relative world position
+    rel_world_pos = [
+        points[:, 0] - ego_x_world,
+        points[:, 1] - ego_y_world,
+        points[:, 2],
+    ]
+
+    # Pre-calculate sine and cosine for efficiency
+    ego_heading_rad = normalize_angle(ego_heading_rad)  # Normalize angle to [-π, π]
+    cos_heading = np.cos(ego_heading_rad)
+    sin_heading = np.sin(ego_heading_rad)
 
     # Convert from left-handed to right-handed if needed
     if left_to_right:
-        points_ego[:, 1] = -points_ego[:, 1]  # Flip Y axis
+        # need flip y axis and change the rotation matrix
+        raise NotImplementedError("The right-handed conversion is not implemented yet.")
+    else:
+        # Transform to ego coordinates using rotation matrix
+        ego_x = rel_world_pos[0] * cos_heading + rel_world_pos[1] * sin_heading
+        ego_y = -rel_world_pos[0] * sin_heading + rel_world_pos[1] * cos_heading
+    ego_z = rel_world_pos[2]
 
-    return points_ego
+    return np.column_stack([ego_x, ego_y, ego_z])  # pyright: ignore[reportCallIssue]
+
+
+def transform_heading_to_ego(
+    object_heading_rad: float, ego_heading_rad: float, normalize: bool = True
+) -> float:
+    """
+    Transform object heading from world to ego-relative coordinates.
+
+    Args:
+        object_heading_rad: Object heading in world coordinates (radians)
+        ego_heading_rad: Ego vehicle heading in world coordinates (radians)
+        normalize: Whether to normalize result to [-π, π] range (default: True)
+
+    Returns:
+        Relative heading in ego coordinates (radians)
+    """
+    relative_heading = object_heading_rad - ego_heading_rad
+
+    if normalize:
+        relative_heading = normalize_angle(relative_heading)
+
+    return relative_heading
 
 
 def ego_to_bev_pixels(
@@ -221,7 +251,7 @@ def ego_to_bev_pixels(
 
     Args:
         points_ego: Nx2 or Nx3 array of points in ego coordinates (meters)
-                   In ego coordinates: X=forward, Y=right
+                   In ego coordinates: X=forward, Y=right (CARLA coordinates)
         bev_height: Height of BEV map in pixels
         bev_width: Width of BEV map in pixels
         resolution: Meters per pixel
@@ -235,11 +265,11 @@ def ego_to_bev_pixels(
 
     # Extract x, y coordinates
     x_ego = points_ego[:, 0]  # Forward distance in meters
-    y_ego = points_ego[:, 1]  # Right distance in meters
+    y_ego = points_ego[:, 1]  # Left distance in meters (CARLA coordinates)
 
     # Convert to pixels
     # X (forward in ego) decreases row (moves up in image)
-    # Y (right in ego) increases column (moves right in image)
+    # Y (right in ego) increases column (moves right in image) - CARLA coordinates
     rows = ego_row - x_ego / resolution
     cols = ego_col + y_ego / resolution
 
@@ -304,7 +334,7 @@ def draw_lane_on_bev(
     bev_map: np.ndarray,
     lane_points: np.ndarray,
     lane_type: str,
-    resolution: float = 0.25,
+    resolution: float = BEV_SEMANTIC_RESOLUTION,
     thickness: float = 0.3,
 ) -> np.ndarray:
     """
@@ -381,12 +411,12 @@ def draw_trigger_on_bev(
 
 
 def generate_full_bev_from_map(
-    map_data: Union[Dict, "MapProcessor"],
-    world2ego: np.ndarray,
-    ego_position: Tuple[float, float],
+    map_data: "MapProcessor",
+    ego_points: np.ndarray,
+    ego_heading_rad: float,
     full_height: int = 256,
     full_width: int = 256,
-    resolution: float = 0.25,
+    resolution: float = BEV_SEMANTIC_RESOLUTION,
     **kwargs,
 ) -> np.ndarray:
     """
@@ -394,8 +424,8 @@ def generate_full_bev_from_map(
 
     Args:
         map_data: Dictionary containing road data or MapProcessor instance
-        world2ego: 4x4 transformation matrix
-        ego_position: Tuple of (x, y) ego position in world coordinates
+        ego_points: (3,) array of ego position in world coordinates [x, y, z]
+        ego_heading_rad: Current ego heading in radians
         full_height: Height of full BEV map
         full_width: Width of full BEV map
         resolution: Meters per pixel
@@ -407,8 +437,8 @@ def generate_full_bev_from_map(
     # For full BEV, use full view type
     return generate_bev_from_map(
         map_data=map_data,
-        world2ego=world2ego,
-        ego_position=ego_position,
+        ego_points=ego_points,
+        ego_heading_rad=ego_heading_rad,
         bev_height=full_height,
         bev_width=full_width,
         resolution=resolution,
@@ -494,11 +524,11 @@ class MapProcessor:
 
     def generate_bev(
         self,
-        world2ego: np.ndarray,
-        ego_position: Tuple[float, float],
+        ego_points: np.ndarray,
+        ego_heading_rad: float,
         bev_height: int = 128,
         bev_width: int = 256,
-        resolution: float = 0.25,
+        resolution: float = BEV_SEMANTIC_RESOLUTION,
         view_type: str = BEV_VIEW_FRONT,
         lane_thickness: float = 0.3,
         max_distance: Optional[float] = None,
@@ -507,8 +537,8 @@ class MapProcessor:
         Efficiently generates a BEV map by querying nearby map elements.
 
         Args:
-            world2ego: 4x4 transformation matrix from world to ego
-            ego_position: Tuple of (x, y) ego position in world coordinates
+            ego_points: (3,) array of ego position in world coordinates [x, y, z]
+            ego_heading_rad: Current ego heading in radians
             bev_height: Height of BEV map in pixels
             bev_width: Width of BEV map in pixels
             resolution: Meters per pixel
@@ -528,7 +558,7 @@ class MapProcessor:
         bev_map = np.zeros((bev_height, bev_width), dtype=np.uint8)
 
         # Use the provided ego position in world coordinates to query the KDTree
-        ego_pos_world = np.array(ego_position)
+        ego_pos_world = ego_points[:2]  # Use x, y coordinates for KDTree query
 
         # --- Process Lanes ---
         if self.lane_kdtree:
@@ -537,7 +567,9 @@ class MapProcessor:
 
             for idx in nearby_indices:
                 segment = self._flat_lanes[idx]
-                points_ego = transform_points_to_ego(segment["points"], world2ego)
+                points_ego = transform_points_to_ego(
+                    segment["points"], ego_points, ego_heading_rad
+                )
                 pixels = ego_to_bev_pixels(
                     points_ego, bev_height, bev_width, resolution, view_type
                 )
@@ -553,7 +585,9 @@ class MapProcessor:
 
             for idx in nearby_indices:
                 trigger = self._flat_triggers[idx]
-                points_ego = transform_points_to_ego(trigger["points"], world2ego)
+                points_ego = transform_points_to_ego(
+                    trigger["points"], ego_points, ego_heading_rad
+                )
                 pixels = ego_to_bev_pixels(
                     points_ego, bev_height, bev_width, resolution, view_type
                 )
@@ -565,11 +599,11 @@ class MapProcessor:
 # --- DEFAULT IMPLEMENTATION (USES MAPPROCESSOR) ---
 def generate_bev_from_map(
     map_data: Union[Dict, MapProcessor],
-    world2ego: np.ndarray,
-    ego_position: Tuple[float, float],
+    ego_points: np.ndarray,
+    ego_heading_rad: float,
     bev_height: int = 128,
     bev_width: int = 256,
-    resolution: float = 0.25,
+    resolution: float = BEV_SEMANTIC_RESOLUTION,
     view_type: str = BEV_VIEW_FRONT,
     lane_thickness: float = 0.3,
     max_distance: Optional[float] = None,
@@ -580,8 +614,8 @@ def generate_bev_from_map(
 
     Args:
         map_data: Dictionary containing road data or MapProcessor instance
-        world2ego: 4x4 transformation matrix from world to ego
-        ego_position: Tuple of (x, y) ego position in world coordinates
+        ego_points: (3,) array of ego position in world coordinates [x, y, z]
+        ego_heading_rad: Current ego heading in radians
         bev_height: Height of BEV map in pixels
         bev_width: Width of BEV map in pixels
         resolution: Meters per pixel
@@ -593,7 +627,7 @@ def generate_bev_from_map(
     Returns:
         BEV semantic map with shape (H, W) and values 0-6
     """
-    
+
     # Calculate recommended max_distance if not provided
     if max_distance is None:
         max_distance = calculate_recommended_max_distance(
@@ -608,8 +642,8 @@ def generate_bev_from_map(
         processor = map_data
 
     bev_map = processor.generate_bev(
-        world2ego,
-        ego_position,
+        ego_points,
+        ego_heading_rad,
         bev_height,
         bev_width,
         resolution,

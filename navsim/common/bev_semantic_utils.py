@@ -9,7 +9,7 @@ not through model modifications.
 
 import numpy as np
 import cv2
-from typing import Tuple, Optional
+from typing import Tuple
 
 
 # TODO: to b2d constant
@@ -70,9 +70,9 @@ def ego_to_bev_coordinates(
     Returns:
         Nx2 array of (row, col) pixel coordinates
     """
-    # In ego coordinates:
+    # In ego coordinates (CARLA/Bench2Drive):
     # x: forward (positive forward)
-    # y: left (positive left)
+    # y: right (positive right)
 
     # In BEV image:
     # row: 0 at top (far ahead), increases downward (toward ego)
@@ -103,7 +103,8 @@ def ego_to_bev_coordinates(
 
 
 def draw_rotated_box(
-    image: np.ndarray, center: Tuple[int, int], size: Tuple[int, int], angle: float, value: int
+    image: np.ndarray, center: Tuple[int, int], size: Tuple[int, int], angle_rad: float, value: int,
+    clockwise: bool = True
 ) -> np.ndarray:
     """
     Draw a filled rotated rectangle on the image.
@@ -112,23 +113,33 @@ def draw_rotated_box(
         image: Image to draw on
         center: (row, col) center of box in image coordinates
         size: (height, width) of box in pixels
-        angle: Rotation angle in radians
+        angle_rad: Rotation angle in radians
         value: Fill value
+        clockwise: If True (default), interpret angle_rad as CARLA/Bench2Drive clockwise rotation.
+                  If False, use standard mathematical counter-clockwise rotation.
 
     Returns:
         Image with box drawn
     """
-    # Create rotation matrix
-    cos_a = np.cos(angle)
-    sin_a = np.sin(angle)
+    # Convert angle to standard CCW mathematical convention if needed
+    if clockwise:
+        # CARLA/Bench2Drive uses clockwise rotation, convert to CCW for standard math
+        ccw_angle_rad = -angle_rad
+    else:
+        # Already in standard CCW mathematical convention
+        ccw_angle_rad = angle_rad
+
+    # Create standard CCW rotation matrix (mathematically correct)
+    cos_a = np.cos(ccw_angle_rad)
+    sin_a = np.sin(ccw_angle_rad)
+    rot_matrix = np.array([[cos_a, -sin_a], [sin_a, cos_a]])  # Standard CCW rotation matrix
 
     # Box corners (relative to center)
     # Using row-major convention: height corresponds to Y, width to X
     h, w = size
     corners = np.array([[-h / 2, -w / 2], [h / 2, -w / 2], [h / 2, w / 2], [-h / 2, w / 2]])
 
-    # Rotate corners
-    rot_matrix = np.array([[cos_a, -sin_a], [sin_a, cos_a]])
+    # Rotate corners using standard mathematical rotation
     rotated_corners = corners @ rot_matrix.T
 
     # Translate to absolute position
@@ -143,54 +154,6 @@ def draw_rotated_box(
     cv2.fillPoly(image, [cv2_corners], value)  # type: ignore
 
     return image
-
-
-def generate_road_mask_from_trajectory(
-    trajectory: np.ndarray,
-    bev_height: int = 128,
-    bev_width: int = 256,
-    resolution: float = 0.25,
-    road_width: float = 4.0,
-) -> np.ndarray:
-    """
-    Generate road mask from ego trajectory.
-
-    Args:
-        trajectory: Nx3 array of (x, y, heading) waypoints
-        bev_height: Height of BEV map
-        bev_width: Width of BEV map
-        resolution: Meters per pixel
-        road_width: Width of road in meters
-
-    Returns:
-        Binary mask with road area
-    """
-    road_mask = np.zeros((bev_height, bev_width), dtype=np.uint8)
-
-    # Convert trajectory to pixel coordinates
-    traj_pixels = ego_to_bev_coordinates(trajectory[:, :2], bev_height, bev_width, resolution)
-
-    # Filter out points outside image
-    valid_mask = (
-        (traj_pixels[:, 0] >= 0)
-        & (traj_pixels[:, 0] < bev_height)
-        & (traj_pixels[:, 1] >= 0)
-        & (traj_pixels[:, 1] < bev_width)
-    )
-    traj_pixels = traj_pixels[valid_mask]
-
-    if len(traj_pixels) < 2:
-        return road_mask
-
-    # Draw thick polyline for road
-    # OpenCV expects (x,y) = (col,row) format
-    points = traj_pixels[:, [1, 0]].astype(np.int32)
-    thickness = int(road_width / resolution)
-    cv2.polylines(
-        road_mask, [points], isClosed=False, color=1, thickness=thickness  # type: ignore
-    )  # type: ignore
-
-    return road_mask
 
 
 def generate_agent_mask(
@@ -245,14 +208,13 @@ def generate_agent_mask(
             vehicle_mask,
             center=(center_pixel[0], center_pixel[1]),
             size=(length_pixels, width_pixels),
-            angle=-heading,  # Negative because of coordinate system
+            angle_rad=heading,  # CARLA clockwise heading (default clockwise=True)
             value=1,
         )
 
     return vehicle_mask
 
 
-# TODO: Shoud not be so many None, can be more strict
 def generate_simple_bev_semantic(
     agents: np.ndarray,
     agent_labels: np.ndarray,

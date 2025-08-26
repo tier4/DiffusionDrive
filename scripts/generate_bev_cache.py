@@ -17,12 +17,17 @@ from pathlib import Path
 from tqdm import tqdm
 from typing import Dict
 
+from navsim.common.bench2drive_constants import (
+    BEV_SEMANTIC_RESOLUTION,
+)
+
 from navsim.common.bev_map_utils import (
     MapProcessor,
     load_map_data,
     extract_front_half_bev,
     generate_full_bev_from_map,
 )
+from navsim.planning.simulation.planner.pdm_planner.utils.pdm_geometry_utils import normalize_angle
 
 
 def setup_logging(verbose: bool = False) -> logging.Logger:
@@ -72,7 +77,10 @@ def worker_process_frame_ray(
             logging.error(f"Ego vehicle not found in frame {frame_path}")
             return False
 
-        world2ego = np.array(ego_box["world2ego"])
+        ego_points = np.array(ego_box["center"])  # [x, y, z] in world coordinates
+        ego_heading_rad = normalize_angle(
+            np.radians(ego_box["rotation"][2])
+        )  # Convert degrees to radians and normalize
 
         # Find the correct map processor for this frame's town
         town_name = next((p for p in scenario_name.split("_") if p.startswith("Town")), None)
@@ -83,28 +91,22 @@ def worker_process_frame_ray(
         # Get the MapProcessor object from Ray's object store
         map_processor = ray.get(map_processor_refs[town_name])
 
-        if generate_full:
-            # Call the optimized function that uses the processor
-            full_bev = generate_full_bev_from_map(
-                map_processor, world2ego, (ego_box["location"][:2])
-            )
-            front_bev = extract_front_half_bev(full_bev)
-            np.savez_compressed(
-                output_path,
-                full_bev=full_bev.astype(np.float32),
-                front_bev=front_bev.astype(np.float32),
-                world2ego=world2ego,
-                frame_idx=int(frame_number),
-            )
-        else:
-            # Call the processor's fast generation method directly
-            front_bev = map_processor.generate_bev(world2ego)
-            np.savez_compressed(
-                output_path,
-                front_bev=front_bev.astype(np.float32),
-                world2ego=world2ego,
-                frame_idx=int(frame_number),
-            )
+        # Generate full BEV map and extract front half
+        full_bev = generate_full_bev_from_map(
+            map_data=map_processor,
+            ego_points=ego_points,
+            ego_heading_rad=ego_heading_rad,
+            resolution=BEV_SEMANTIC_RESOLUTION,
+        )
+        front_bev = extract_front_half_bev(full_bev)
+        np.savez_compressed(
+            output_path,
+            full_bev=full_bev.astype(np.float32),
+            front_bev=front_bev.astype(np.float32),
+            ego_points=ego_points,
+            ego_heading_rad=ego_heading_rad,
+            frame_idx=int(frame_number),
+        )
         return True
     except Exception as e:
         logging.error(f"Error processing {frame_path}: {e}", exc_info=True)
@@ -124,9 +126,6 @@ def main():
     )
     parser.add_argument(
         "--scenarios", type=str, nargs="+", help="Specific scenarios to process (default: all)"
-    )
-    parser.add_argument(
-        "--full-bev", action="store_true", help="Generate full 360° BEV maps (default: front only)"
     )
     parser.add_argument("--overwrite", action="store_true", help="Overwrite existing BEV files")
     parser.add_argument("--max-frames", type=int, help="Maximum frames per scenario to process")
@@ -195,7 +194,7 @@ def main():
         logger.info(f"Dispatching {len(all_frame_files)} frames to Ray workers...")
         result_refs = [
             worker_process_frame_ray.remote(
-                frame, output_dir, map_processor_refs, args.full_bev, args.overwrite
+                frame, output_dir, map_processor_refs, True, args.overwrite
             )
             for frame in all_frame_files
         ]
@@ -221,7 +220,7 @@ def main():
         metadata = {
             "data_root": str(data_root),
             "map_dir": str(map_dir),
-            "generate_full": args.full_bev,
+            "generate_full": True,
             "total_processed": total_processed,
             "total_skipped": total_skipped,
         }

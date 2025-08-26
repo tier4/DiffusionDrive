@@ -18,7 +18,7 @@ from navsim.planning.training.agent_lightning_module import AgentLightningModule
 logger = logging.getLogger(__name__)
 
 CONFIG_PATH = "config/training"
-CONFIG_NAME = "default_training"
+CONFIG_NAME = "default_training_w_callbacks"
 
 
 @hydra.main(config_path=CONFIG_PATH, config_name=CONFIG_NAME, version_base=None)
@@ -40,6 +40,20 @@ def main(cfg: DictConfig) -> None:
     logger.info(f"Path where all results are stored: {cfg.output_dir}")
 
     logger.info("Building Agent")
+
+    # Print configuration for visibility
+    print("\n" + "=" * 80)
+    print("Configuration Summary:")
+    print("=" * 80)
+    print(f"Agent: {cfg.agent._target_}")
+    print(f"Config Class: {cfg.agent.config._target_}")
+    print(f"Dataset Type: {cfg.agent.config.dataset_type}")
+    print(f"Learning Rate: {cfg.agent.lr}")
+    print(f"Cache Path: {cfg.cache_path}")
+    print(f"Max Epochs: {cfg.trainer.params.max_epochs}")
+    print(f"Batch Size: {cfg.dataloader.params.batch_size}")
+    print("=" * 80 + "\n")
+
     agent: AbstractAgent = instantiate(cfg.agent)
 
     logger.info("Building Lightning Module")

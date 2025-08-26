@@ -162,20 +162,15 @@ python3 navsim/planning/script/run_dataset_caching.py \
 
 **Important:** Training on Bench2Drive **must** be done using a pre-computed cache. The on-the-fly data loading pipeline is no longer supported for training.
 
-```bash
-# Use the provided training script (cache-only)
-./train_bench2drive_full.sh
+For detailed training and evaluation commands, see **[Bench2Drive Training & Evaluation Guide](train_eval.md)**.
 
-# Or run manually with cache
+Quick example:
+
+```bash
+# Simple training
 python3 navsim/planning/script/run_bench2drive_training.py \
-    agent=diffusiondrive_agent_extended \
-    train_test_split=bench2drive \
-    experiment_name=bench2drive_training \
-    split=trainval \
-    trainer.params.max_epochs=100 \
-    cache_path="${NAVSIM_EXP_ROOT}/Bench2Drive-Base_training_cache/" \
-    use_cache_without_dataset=True \
-    force_cache_computation=False
+    agent=diffusiondrive_agent_b2d \
+    experiment_name=my_b2d_experiment
 ```
 
 Note: Since training relies entirely on the cache, the `BENCH2DRIVE_ROOT` environment variable is not used during the training process.

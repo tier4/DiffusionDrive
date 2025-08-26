@@ -13,9 +13,9 @@ scene_filter:
   _convert_: all
   log_names: null # Use all available scenarios
   tokens: null
-  num_frames: 30 # 15 seconds at 2Hz
+  num_frames: 15 # 7.5 seconds at 2Hz (4 history + 1 current + 10 future)
   num_history_frames: 4
-  num_future_frames: 26
+  num_future_frames: 10
   frame_interval: 1 # Already downsampled in loader
   has_route: true
   max_scenes: null

@@ -1,6 +1,6 @@
 """
-Extended TransFuser configuration with trajectory normalization support.
-This extends the original TransfuserConfig without modifying it.
+Bench2Drive configuration with trajectory normalization support.
+This extends the original TransfuserConfig for B2D-specific needs.
 """
 
 from dataclasses import dataclass
@@ -8,8 +8,8 @@ from navsim.agents.diffusiondrive.transfuser_config import TransfuserConfig
 
 
 @dataclass
-class ExtendedTransfuserConfig(TransfuserConfig):
-    """Extended configuration with dataset-specific trajectory normalization."""
+class Bench2DriveConfig(TransfuserConfig):
+    """Bench2Drive configuration with dataset-specific trajectory normalization."""
 
     # Dataset type flag
     dataset_type: str = "navsim"  # "navsim" or "bench2drive"

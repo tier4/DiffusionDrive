@@ -229,6 +229,25 @@ class Bench2DriveFeatureBuilder(AbstractFeatureBuilder):
 
             # Use histogramdd with (x, y) coordinate order - matches NavSim convention
             hist = np.histogramdd(point_cloud[:, :2], bins=(xbins, ybins))[0]
+            
+            # CRITICAL: Coordinate system alignment for B2D integration
+            #
+            # DESIGN GOAL: Match NavSim pipeline structure while preserving CARLA coordinate system
+            #
+            # ISSUE: Raw B2D LiDAR data (from CARLA LAZ files) creates histogram with different
+            # orientation than what NavSim pipeline expects, causing misalignment between:
+            # - LiDAR histogram features
+            # - BEV semantic map features  
+            # - Agent state features
+            #
+            # SOLUTION: np.flipud() corrects histogram orientation to ensure all input features
+            # use consistent CARLA coordinate system (X=forward, Y=right, left-handed):
+            # - LiDAR histogram aligns with BEV semantic map
+            # - Agent positions match across all feature modalities
+            # - Model receives spatially consistent multi-modal inputs
+            #
+            # This maintains CARLA coordinates while ensuring compatibility with NavSim pipeline.
+            hist = np.flipud(hist)
 
             # Apply clipping and normalization like NavSim
             hist[hist > self.config.hist_max_per_pixel] = self.config.hist_max_per_pixel
@@ -324,18 +343,20 @@ class Bench2DriveTargetBuilder(AbstractTargetBuilder):
         """
         targets = {}
 
-        # Get future trajectory
-        targets["trajectory"] = scene.get_future_trajectory()
+        # Get agent states and labels from the same frame as BEV
+        # Use the current frame (boundary between history and future)
+        current_frame_idx = scene.history_frames  # Current frame for consistency across trajectory, BEV, and agents
 
-        # Get agent states and labels
-        agent_states, agent_labels, agent_types = scene.get_agents()
+        # Get future trajectory from the same frame as BEV and agents
+        targets["trajectory"] = scene.get_future_trajectory(current_frame_idx)
+        agent_states, agent_labels, agent_types = scene.get_agents(current_frame_idx)
         targets["agent_states"] = agent_states
         targets["agent_labels"] = agent_labels
         # Note: agent_types can be used for improved BEV rendering if needed
 
-        # Get BEV semantic map
-        # TODO: the bev map also should cover the same area as the lidar
-        targets["bev_semantic_map"] = scene.get_bev_semantic_map()
+        # Get BEV semantic map from current frame (NavSim convention)
+        # Use the same frame index for consistency with agents
+        targets["bev_semantic_map"] = scene.get_bev_semantic_map(current_frame_idx)
 
         return targets
 
