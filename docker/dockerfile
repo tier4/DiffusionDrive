@@ -104,7 +104,7 @@ RUN pip install --upgrade --no-cache-dir pip && \
     matplotlib \
     nest_asyncio \
     numpy==1.23.4 \
-    opencv-python==4.2.0.32 \
+    opencv-python==4.9.0.80 \
     pandas \
     Pillow>=10.4.0 \
     psutil \
