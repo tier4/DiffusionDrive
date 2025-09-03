@@ -1,0 +1,55 @@
+services:
+  carla:
+    image: carlasim/carla:0.9.15
+    container_name: carla
+    restart: no
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    ipc: host
+    networks:
+      - carla_net
+    command: /bin/bash ./CarlaUE4.sh -RenderOffScreen -carla-rpc-port=2000
+    healthcheck:
+      test: ["CMD", "sh", "-c", "grep -q ':07D0 ' /proc/net/tcp"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  diffusiondrive:
+    image: diffusiondrive:latest
+    container_name: ${CONTAINER_NAME:-diffusiondrive}
+    restart: no
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    ipc: host
+    networks:
+      - carla_net
+    volumes:
+      - "${WORKSPACE_DIR:-/home/chenglin/workspace}:/workspace"
+      - "${DATA_DIR:-/mnt}:/mnt"
+      - "${HOME}/.ssh:/home/user/.ssh:ro"
+    ulimits:
+      memlock: -1
+    depends_on:
+      carla:
+        condition: service_healthy
+    stdin_open: true
+    tty: true
+    entrypoint: []
+    command: ["tail", "-f", "/dev/null"]
+    working_dir: /workspace
+
+networks:
+  carla_net:
+    driver: bridge

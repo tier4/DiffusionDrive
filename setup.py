@@ -17,7 +17,7 @@ setuptools.setup(
     author_email="kashyap.chitta@uni-tuebingen.de",
     description="NAVSIM: Data-Driven Non-Reactive Autonomous Vehicle Simulation and Benchmarking",
     url="https://github.com/autonomousvision/navsim",
-    python_requires=">=3.9,<=3.10",
+    python_requires=">=3.9,<3.11",
     packages=setuptools.find_packages(script_folder),
     package_dir={"": "."},
     classifiers=[

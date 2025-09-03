@@ -104,7 +104,7 @@ RUN pip install --upgrade --no-cache-dir pip && \
     matplotlib \
     nest_asyncio \
     numpy==1.23.4 \
-    opencv-python==4.9.0.80 \
+    opencv-python==4.2.0.32 \
     pandas \
     Pillow>=10.4.0 \
     psutil \
@@ -126,15 +126,25 @@ RUN pip install --upgrade --no-cache-dir pip && \
     tornado>=6.4.2 \
     tqdm \
     ujson \
-    torch==2.7.1 \
-    torchvision==0.22.1 \
+    torch==2.8.0 \
+    torchvision==0.23.0 \
     pytorch-lightning==2.4.0 \
     tensorboard==2.16.2 \
     protobuf==4.25.8 \
     notebook>=7.3.2 \
     timm \
     diffusers \
-    einops && \
+    einops \
+    pydot \
+    py-trees==0.8.3 \
+    transforms3d \
+    tabulate \
+    ephem \
+    dictor \
+    pygame  \
+    pexpect  \
+    requests \
+    simple-watchdog-timer && \
     pip cache purge && \
     # Set path of python packages
     echo "# Set path of python packages" >>${HOME}/.bashrc && \
