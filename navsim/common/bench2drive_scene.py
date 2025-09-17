@@ -519,7 +519,7 @@ class Bench2DriveScene:
 
             # Use annotation distance instead of manual calculation (comprehensive fix plan)
             distance = obj["distance"]  # Pre-calculated distance to ego
-            if distance > BENCH2DRIVE_LIDAR_RANGE_M:  # Filter by actual B2D LiDAR range (85m)
+            if distance > BENCH2DRIVE_LIDAR_RANGE_M / 2:  # Filter by LiDAR radius (42.5m from 85m diameter)
                 continue
 
             # Extract rotation and convert to ego-centric using simpler angle subtraction
