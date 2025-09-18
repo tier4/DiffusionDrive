@@ -53,12 +53,27 @@ trainer:
   callbacks:
     # Time logging callback for tracking training/validation time
     - _target_: navsim.planning.training.callbacks.time_logging_callback.TimeLoggingCallback
-    
-    # Model checkpointing callback
-    - _target_: pytorch_lightning.callbacks.ModelCheckpoint
 
-      # Your desired checkpointing logic
+    # Model checkpointing callback - saves best models based on validation trajectory loss
+    - _target_: pytorch_lightning.callbacks.ModelCheckpoint
+      dirpath: null  # Will use default from trainer
+      filename: "epoch={epoch:03d}-val_traj_loss={val/trajectory_loss_epoch:.4f}"  # Include loss value in filename
       every_n_epochs: 10
       save_top_k: 5
-      monitor: "val/loss_epoch" # Or any other metric you log (e.g., "val_accuracy")
-      mode: "min" # "min" for loss, "max" for accuracy
+      save_last: True  # Also save the last checkpoint
+      monitor: "val/trajectory_loss_epoch"  # Monitor trajectory loss specifically
+      mode: "min"  # Minimize trajectory loss
+      verbose: True  # Print when saving checkpoints
+      auto_insert_metric_name: False  # We're manually controlling the filename format
+
+    # Early stopping callback - stops training when validation trajectory loss stops improving
+    # This is optional but helps prevent overfitting and saves compute resources
+    - _target_: pytorch_lightning.callbacks.EarlyStopping
+      monitor: "val/trajectory_loss_epoch"  # Same metric as checkpoint monitoring
+      min_delta: 0.0001  # Minimum change to qualify as an improvement
+      patience: 50  # Number of validation epochs with no improvement after which training will be stopped
+      mode: "min"  # Minimize trajectory loss
+      verbose: True  # Print early stopping messages
+      check_finite: True  # Stop training if the monitored metric becomes NaN or inf
+      stopping_threshold: null  # No specific threshold, just use patience
+      divergence_threshold: null  # No divergence threshold
