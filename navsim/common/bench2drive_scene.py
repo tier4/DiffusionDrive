@@ -229,8 +229,11 @@ class Bench2DriveScene:
                 # Convert to numpy array (RGB format)
                 img = np.array(img_pil)
             else:
-                # Create placeholder for missing camera
-                img = np.zeros((900, 1600, 3), dtype=np.uint8)
+                # Missing camera data should not be silently ignored
+                raise FileNotFoundError(
+                    f"Camera image not found at {img_path}. "
+                    f"Missing sensor data should not be replaced with fake values."
+                )
 
             # Keep image as numpy array in HWC format
             images.append(img)
@@ -290,12 +293,17 @@ class Bench2DriveScene:
                 # Combine into point cloud [N, 4] (x, y, z, intensity)
                 point_cloud = np.hstack([points, intensity]).astype(np.float32)
             except Exception as e:
-                print(f"Warning: Failed to load LiDAR from {lidar_path}: {e}")
-                print("Using empty point cloud as fallback")
-                point_cloud = np.zeros((0, 4), dtype=np.float32)
+                # LiDAR loading errors should not be silently ignored
+                raise RuntimeError(
+                    f"Failed to load LiDAR data from {lidar_path}: {e}. "
+                    f"Corrupted sensor data should not be replaced with fake values."
+                )
         else:
-            # Empty point cloud if file not found
-            point_cloud = np.zeros((0, 4), dtype=np.float32)
+            # Missing LiDAR data should not be silently ignored
+            raise FileNotFoundError(
+                f"LiDAR file not found at {lidar_path}. "
+                f"Missing sensor data should not be replaced with fake values."
+            )
 
         # Create Lidar object with numpy array (not tensor)
         return Lidar(lidar_pc=point_cloud)
@@ -461,15 +469,14 @@ class Bench2DriveScene:
 
             trajectory.append([future_x_in_ego, future_y_in_ego, future_heading_in_ego])
 
-        # Pad trajectory with final position if we have fewer than NUM_FUTURE_WAYPOINTS
+        # Return None if we don't have enough future frames
+        # This prevents training on fake/padded data
         if len(trajectory) < NUM_FUTURE_WAYPOINTS:
-            if len(trajectory) > 0:
-                # Extend trajectory by repeating the last waypoint
-                last_waypoint = trajectory[-1]
-                while len(trajectory) < NUM_FUTURE_WAYPOINTS:
-                    trajectory.append(last_waypoint.copy())
-            else:
-                raise ValueError(f"No future frames available from frame {frame_idx}")
+            logger.debug(
+                f"Frame {frame_idx}: Only {len(trajectory)}/{NUM_FUTURE_WAYPOINTS} "
+                f"future waypoints available. Returning None to skip this sample."
+            )
+            return None
 
         return torch.tensor(trajectory, dtype=torch.float64)
 

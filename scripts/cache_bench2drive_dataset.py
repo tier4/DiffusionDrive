@@ -74,6 +74,10 @@ class SceneProcessor:
             # Compute targets
             targets = self.target_builder.compute_targets(scene)
 
+            # Skip samples with incomplete trajectory data
+            if targets is None:
+                return token, "Skipped: insufficient future frames for complete trajectory"
+
             # Extract log name from token
             log_name = "_".join(token.split("_")[:-1])  # Remove frame number
 

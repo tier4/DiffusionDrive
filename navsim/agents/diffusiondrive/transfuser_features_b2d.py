@@ -347,7 +347,11 @@ class Bench2DriveTargetBuilder(AbstractTargetBuilder):
         current_frame_idx = scene.history_frames  # Current frame for consistency across trajectory, BEV, and agents
 
         # Get future trajectory from the same frame as BEV and agents
-        targets["trajectory"] = scene.get_future_trajectory(current_frame_idx)
+        trajectory = scene.get_future_trajectory(current_frame_idx)
+        if trajectory is None:
+            # Skip this sample - not enough future frames for complete trajectory
+            return None
+        targets["trajectory"] = trajectory
         agent_states, agent_labels, agent_types = scene.get_agents(current_frame_idx)
         targets["agent_states"] = agent_states
         targets["agent_labels"] = agent_labels
