@@ -83,10 +83,15 @@ class Bench2DriveScene:
         self.config = config
         self.planner = planner
         self.trajectory_sampling = trajectory_sampling
+        self.loader = scene_info.get("loader")  # Store loader reference
+        self.scene_name = scene_info.get("scenario", "unknown")  # Store scene name
 
         # Cache for loaded data
         self._annotations_cache = {}
         self._sensor_data_cache = {}
+
+        # Log sampling rate info once at initialization
+        self._log_sampling_rate_once()
 
         # Frame information
         self.anno_paths = scene_info["frames"]
@@ -99,6 +104,23 @@ class Bench2DriveScene:
         self.token = scene_info.get(
             "token", f"{scene_info['scenario']}_{scene_info['start_idx']:05d}"
         )
+
+    def _log_sampling_rate_once(self):
+        """Log sampling rate information once at scene initialization."""
+        if not hasattr(self.config, 'sampling_rate'):
+            return
+
+        sampling_rate = self.config.sampling_rate
+        if sampling_rate == 1:
+            logger.info(
+                f"Scene {self.scene_name}: Using 10Hz data (sampling_rate=1), "
+                f"will skip 5 frames for 0.5s GT intervals"
+            )
+        elif sampling_rate == 5:
+            logger.info(
+                f"Scene {self.scene_name}: Using 2Hz data (sampling_rate=5), "
+                f"consecutive frames already at 0.5s intervals"
+            )
 
     def get_agent_input(self, frame_idx: int = -1) -> AgentInput:
         """
@@ -371,13 +393,34 @@ class Bench2DriveScene:
         # Get current position
         ego_position_world = np.array(ego_box["center"])  # [x, y, z] in world coordinates
 
-        # Sample future frames (consecutive frames at 0.5s intervals)
-        # The dataloader's sampling_rate already ensures correct temporal spacing
+        # Sample future frames at 0.5s intervals (model expectation)
+        # Strict sampling rate handling - only support 10Hz and 2Hz data
+        # Use config's sampling_rate directly (loader may not be available in all contexts)
+        sampling_rate = self.config.sampling_rate if hasattr(self.config, 'sampling_rate') else 5
+
+        if sampling_rate == 1:
+            # 10Hz evaluation mode: raw data at 0.1s intervals
+            frame_stride = 5  # Skip 5 frames to get 0.5s intervals
+        elif sampling_rate == 5:
+            # 2Hz training mode: pre-sampled data at 0.5s intervals
+            frame_stride = 1  # Use consecutive frames (already at 0.5s)
+        else:
+            raise ValueError(
+                f"Unsupported sampling_rate={sampling_rate}. "
+                f"DiffusionDrive only supports:\n"
+                f"  - sampling_rate=1 (10Hz evaluation data)\n"
+                f"  - sampling_rate=5 (2Hz training data)\n"
+                f"Model expects 0.5s intervals between trajectory points."
+            )
+
         # Limit to available frames to prevent out-of-bounds errors
-        max_future_frames = min(NUM_FUTURE_WAYPOINTS, len(self.anno_paths) - frame_idx - 1)
+        max_future_frames = min(
+            NUM_FUTURE_WAYPOINTS,
+            (len(self.anno_paths) - frame_idx - 1) // frame_stride
+        )
 
         for i in range(1, max_future_frames + 1):
-            future_idx = frame_idx + i
+            future_idx = frame_idx + (i * frame_stride)
 
             # Double-check bounds (should not fail with the limit above)
             if future_idx >= len(self.anno_paths):
