@@ -4,7 +4,6 @@ Visualization script for DiffusionDrive model predictions.
 Creates MP4 videos showing:
 - BEV view with predicted trajectory vs ground truth
 - All 8 camera views
-- Properly denormalized trajectories
 - Multiple continuous scenes for longer videos
 """
 
@@ -120,33 +119,9 @@ def draw_trajectory_on_camera(image, camera, trajectory, color=(255, 0, 0), thic
     return image
 
 
-# TODO: The hard coded number are from Diffusion Drive. Should fix it someday
-def denormalize_trajectory(normalized_traj: np.ndarray) -> np.ndarray:
-    """
-    Denormalize trajectory from model output to world coordinates.
-    Based on the normalization in TrajectoryHead.norm_odo():
-    - x_norm = 2*(x + 1.2)/56.9 - 1
-    - y_norm = 2*(y + 20)/46 - 1
-
-    Args:
-        normalized_traj: Normalized trajectory from model [N, 3] or [N, 2]
-
-    Returns:
-        Denormalized trajectory in world coordinates
-    """
-    # Ensure we have the right shape
-    if len(normalized_traj.shape) == 1:
-        normalized_traj = normalized_traj.reshape(-1, 2)
-
-    denorm_traj = normalized_traj.copy()
-
-    # Denormalize X: x = (x_norm + 1) * 56.9 / 2 - 1.2
-    denorm_traj[..., 0] = (normalized_traj[..., 0] + 1) * 56.9 / 2 - 1.2
-
-    # Denormalize Y: y = (y_norm + 1) * 46 / 2 - 20
-    denorm_traj[..., 1] = (normalized_traj[..., 1] + 1) * 46 / 2 - 20
-
-    return denorm_traj
+# Note: The model already outputs trajectories in absolute coordinates (meters)
+# No denormalization is needed as the model only uses normalization internally
+# for the diffusion process, but outputs unnormalized trajectories
 
 
 def load_agent_from_checkpoint(checkpoint_path: str, device: torch.device) -> AbstractAgent:
@@ -298,17 +273,17 @@ def create_visualization_frame(
                     f"      Raw trajectory range: X:[{trajectory_output[:,0].min():.3f}, {trajectory_output[:,0].max():.3f}], Y:[{trajectory_output[:,1].min():.3f}, {trajectory_output[:,1].max():.3f}]"
                 )
 
-            # The model outputs absolute positions, but we need relative positions from ego
-            # The first point should be close to (0, 0) in ego coordinates
-            denorm_poses = trajectory_output.copy()
+            # The model outputs absolute positions in meters
+            # We need to shift them to be relative to the current ego position
+            trajectory_meters = trajectory_output.copy()
 
             # Shift trajectory to start from origin (ego position)
             # This ensures the trajectory is relative to the current ego position
-            if denorm_poses.shape[0] > 0:
-                offset = denorm_poses[0, :2].copy()
-                denorm_poses[:, :2] = denorm_poses[:, :2] - offset
+            if trajectory_meters.shape[0] > 0:
+                offset = trajectory_meters[0, :2].copy()
+                trajectory_meters[:, :2] = trajectory_meters[:, :2] - offset
 
-        predicted_trajectory = Trajectory(denorm_poses)
+        predicted_trajectory = Trajectory(trajectory_meters)
 
         if show_debug:
             print(f"    Frame {frame_idx}: Plotting trajectories")
