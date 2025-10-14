@@ -488,6 +488,17 @@ class Bench2DriveScene:
             agent_states: Tensor [max_agents, 5] with (x, y, heading, length, width)
             agent_labels: Boolean tensor [max_agents] indicating valid agents
             agent_types: Tensor [max_agents] with NavSim class IDs for BEV rendering
+
+        Key Difference from NAVSIM Implementation:
+        -------------------------------------------
+        NAVSIM: Uses rectangular/square filtering (-32m to +32m in X/Y axes)
+                This creates a 64m x 64m square region centered on ego
+                Naturally emphasizes frontal and side views
+
+        B2D:    Uses circular/radial filtering (42.5m radius, 360° coverage)
+                Filters agents by Euclidean distance from ego vehicle
+                Provides uniform coverage in all directions
+                Better for complex scenarios requiring full situational awareness
         """
         if frame_idx == -1:
             frame_idx = self.history_frames - 1  # NavSim convention: use middle frame
@@ -569,8 +580,9 @@ class Bench2DriveScene:
 
             # Use annotation distance instead of manual calculation (comprehensive fix plan)
             distance = obj["distance"]  # Pre-calculated distance to ego
-            if distance > BENCH2DRIVE_LIDAR_RANGE_M / 2:  # Filter by LiDAR radius (42.5m from 85m diameter)
-                continue
+            # Key difference: B2D uses circular filtering (42.5m radius) vs NAVSIM's square region
+            if distance > BENCH2DRIVE_LIDAR_RANGE_M / 2:  # 42.5m from 85m diameter
+                continue  # This provides 360° coverage unlike NAVSIM's frontal-focused square
 
             # Extract rotation and convert to ego-centric using simpler angle subtraction
             rotation = obj["rotation"]  # Required field - fail fast if missing

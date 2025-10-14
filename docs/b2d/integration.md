@@ -60,6 +60,22 @@ CARLA high-level commands are mapped to discrete integer values to match the mod
 * **LiDAR Coverage Adaptation**: The native LiDAR data from Bench2Drive covers an 85m x 85m area. To match DiffusionDrive's expected input, this data is processed at its full resolution and then resized to a 64m x 64m coverage (256x256 pixels) using LANCZOS downsampling to preserve maximum detail.
 * **BEV Dimensions**: The system generates a full 360° BEV map from the map data at a 256x256 resolution (covering 64x64m). This full BEV is then cropped to a **128x256 (H x W) frontal view**. This rectangular shape is the native format for BEV semantic maps in NavSim, designed to align with the coverage of the frontal cameras.
 
+### 3.4 Key Differences from NAVSIM Implementation
+
+The Bench2Drive integration includes several important architectural differences from the original NAVSIM implementation:
+
+#### Agent Filtering Strategy
+* **NAVSIM**: Uses rectangular/square filtering with bounds of -32m to +32m in both X and Y axes, creating a 64m × 64m square region centered on the ego vehicle. This naturally emphasizes frontal and side views.
+* **Bench2Drive**: Uses circular/radial filtering with a 42.5m radius (half of the 85m LiDAR diameter), providing uniform 360° coverage around the ego vehicle. This approach better handles complex driving scenarios that require full situational awareness.
+
+#### Practical Impact
+The circular filtering in B2D ensures consistent detection range in all directions, which is particularly important for:
+* Intersection scenarios where threats can approach from any angle
+* Highway merging situations requiring awareness of vehicles approaching from behind
+* Complex urban environments with pedestrians and vehicles in all directions
+
+This design choice aligns with Bench2Drive's focus on diverse, challenging driving scenarios that go beyond highway-style forward driving.
+
 -----
 
 ## 4\. BEV Map Generation

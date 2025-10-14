@@ -352,6 +352,8 @@ class Bench2DriveTargetBuilder(AbstractTargetBuilder):
             # Skip this sample - not enough future frames for complete trajectory
             return None
         targets["trajectory"] = trajectory
+        # Note: B2D uses circular agent filtering (42.5m radius) vs NAVSIM's square region (-32m to +32m)
+        # This provides 360° coverage for better situational awareness in complex scenarios
         agent_states, agent_labels, agent_types = scene.get_agents(current_frame_idx)
         targets["agent_states"] = agent_states
         targets["agent_labels"] = agent_labels
