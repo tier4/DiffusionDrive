@@ -21,21 +21,23 @@ logger = logging.getLogger(__name__)
 
 class Bench2DriveAgent(TransfuserAgent):
     """Agent specifically for Bench2Drive with proper features and normalization."""
-    
+
     def __init__(self, config: Bench2DriveConfig, lr: float = 6e-4, checkpoint_path: str = None):
         """Initialize with B2D config for normalization support."""
         self._b2d_config = config
         super().__init__(config, lr, checkpoint_path)
-    
+
     def _build_model(self) -> V2TransfuserModelWrapper:
         """Build model using the wrapper for normalization."""
-        logger.info(f"[Bench2DriveAgent] Building model with config: dataset_type={self._b2d_config.dataset_type}")
+        logger.info(
+            f"[Bench2DriveAgent] Building model with config: dataset_type={self._b2d_config.dataset_type}"
+        )
         return V2TransfuserModelWrapper(self._b2d_config)
-    
+
     def get_feature_builders(self) -> List[AbstractFeatureBuilder]:
         """Return Bench2Drive feature builders."""
         return [Bench2DriveFeatureBuilder(config=self._config)]
-    
+
     def get_target_builders(self) -> List[AbstractTargetBuilder]:
         """Return Bench2Drive target builders."""
         return [Bench2DriveTargetBuilder(config=self._config)]

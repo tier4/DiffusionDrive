@@ -21,7 +21,7 @@ This document outlines the implementation plan for integrating DiffusionDrive mo
 
 **Key Components:**
 
-```python
+```python3
 class DiffusionDriveAgent(autonomous_agent.AutonomousAgent):
     """
     CARLA agent for DiffusionDrive model trained on Bench2Drive.
@@ -74,7 +74,7 @@ class DiffusionDriveAgent(autonomous_agent.AutonomousAgent):
 
 **Solution:**
 
-```python
+```python3
 # Direct PyTorch model loading
 import torch
 from navsim.agents.diffusiondrive.transfuser_model_v2 import V2TransfuserModel
@@ -109,7 +109,7 @@ class ModelWrapper:
 
 **Adapt Bench2Drive features for CARLA input:**
 
-```python
+```python3
 def process_carla_sensors(self, sensor_data):
     """Convert CARLA sensor data to DiffusionDrive format."""
     
@@ -150,7 +150,7 @@ def process_carla_sensors(self, sensor_data):
 
 #### 3.1 Trajectory Post-processing
 
-```python
+```python3
 def trajectory_to_waypoints(self, trajectory, ego_transform):
     """Convert model trajectory output to CARLA waypoints."""
     
@@ -175,7 +175,7 @@ def trajectory_to_waypoints(self, trajectory, ego_transform):
 
 #### 3.2 PID Control
 
-```python
+```python3
 def waypoints_to_control(self, waypoints, current_speed):
     """Convert waypoints to vehicle control commands."""
     
@@ -192,7 +192,7 @@ def waypoints_to_control(self, waypoints, current_speed):
 
 #### 4.1 Automatic Data Collection
 
-```python
+```python3
 def save_evaluation_data(self, sensor_data, control, step):
     """Save data for video generation when SAVE_PATH is set."""
     
@@ -234,7 +234,7 @@ def save_evaluation_data(self, sensor_data, control, step):
 
 ```bash
 # After evaluation completes
-python Bench2Drive/tools/generate_video.py -f ${SAVE_PATH}/route_folder/
+python3 Bench2Drive/tools/generate_video.py -f ${SAVE_PATH}/route_folder/
 ```
 
 ### Phase 5: Configuration and Execution
@@ -280,7 +280,7 @@ cd ${CARLA_ROOT}
 
 # Run evaluation
 cd /workspace/Bench2DriveZoo/Bench2Drive
-python leaderboard/leaderboard/leaderboard_evaluator.py \
+python3 leaderboard/leaderboard/leaderboard_evaluator.py \
   --routes=leaderboard/data/routes_devtest.xml \
   --repetitions=1 \
   --track=SENSORS \
@@ -291,7 +291,7 @@ python leaderboard/leaderboard/leaderboard_evaluator.py \
   --traffic-manager-port=8000
 
 # Generate video
-python tools/generate_video.py -f ${SAVE_PATH}/route_*/
+python3 tools/generate_video.py -f ${SAVE_PATH}/route_*/
 ```
 
 ## Implementation Timeline
@@ -503,7 +503,7 @@ cd ${CARLA_ROOT}
 
 # Run evaluation with the new agent
 cd /workspace/Bench2DriveZoo/Bench2Drive
-python leaderboard/leaderboard/leaderboard_evaluator.py \
+python3 leaderboard/leaderboard/leaderboard_evaluator.py \
   --routes=leaderboard/data/routes_devtest.xml \
   --repetitions=1 \
   --track=SENSORS \
@@ -514,7 +514,7 @@ python leaderboard/leaderboard/leaderboard_evaluator.py \
   --traffic-manager-port=8000
 
 # Generate video from saved data
-python tools/generate_video.py -f ${SAVE_PATH}/route_experiment_name/
+python3 tools/generate_video.py -f ${SAVE_PATH}/route_experiment_name/
 ```
 
 ## Next Steps for Testing
