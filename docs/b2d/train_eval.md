@@ -17,8 +17,12 @@ export NAVSIM_EXP_ROOT=/workspace/navsim_workspace/exp
 
 ### 1. Generate BEV Maps
 
-**Simple (required parameters only):**
+The system supports two generation modes:
 
+#### Vector Mode (Default - Sparse)
+Generates sparse BEV maps with lane lines only (~3,600 pixels per frame).
+
+**Simple:**
 ```bash
 python3 scripts/generate_bev_cache.py \
     --data-root /workspace/Bench2Drive \
@@ -26,39 +30,69 @@ python3 scripts/generate_bev_cache.py \
     --output-dir "${NAVSIM_EXP_ROOT}/bench2drive_bev_cache"
 ```
 
-**Full (all parameters):**
-
+**With options:**
 ```bash
 python3 scripts/generate_bev_cache.py \
     --data-root /workspace/Bench2Drive \
     --map-dir /workspace/Bench2Drive-Map \
     --output-dir "${NAVSIM_EXP_ROOT}/bench2drive_bev_cache" \
-    --scenarios "scenario1,scenario2" \
-    --overwrite \
-    --max-frames 1000 \
-    --workers 16 \
-    --verbose
+    --generation-type vector \
+    --lane-thickness 0.4 \
+    --workers 16
+```
+
+#### Segmentation Mode (Recommended - Dense)
+Generates dense BEV maps with filled road surfaces (~20,500 pixels per frame, 5.6x better coverage).
+
+**Simple:**
+```bash
+python3 scripts/generate_bev_cache.py \
+    --data-root /workspace/Bench2Drive \
+    --map-dir /workspace/Bench2Drive-Map \
+    --output-dir "${NAVSIM_EXP_ROOT}/bench2drive_bev_cache_seg" \
+    --generation-type segmentation
+```
+
+**With options:**
+```bash
+python3 scripts/generate_bev_cache.py \
+    --data-root /workspace/Bench2Drive \
+    --map-dir /workspace/Bench2Drive-Map \
+    --output-dir "${NAVSIM_EXP_ROOT}/bench2drive_bev_cache_seg" \
+    --generation-type segmentation \
+    --lane-width 5.0 \
+    --fill-drivable \
+    --workers 16
 ```
 
 *Use `--help` for complete parameter documentation.*
 
 ### 2. Generate Bench2Drive Cache
 
-**Simple (uses defaults):**
+After generating BEV maps, create the training cache. Use the appropriate BEV cache directory based on your chosen mode.
 
+**For Vector Mode:**
 ```bash
 python3 scripts/cache_bench2drive_dataset.py \
     --data-root /workspace/Bench2Drive \
-    --map-dir /workspace/Bench2Drive-Map
+    --bev-cache-dir "${NAVSIM_EXP_ROOT}/bench2drive_bev_cache" \
+    --output-dir "${NAVSIM_EXP_ROOT}/bench2drive_cache"
+```
+
+**For Segmentation Mode (Recommended):**
+```bash
+python3 scripts/cache_bench2drive_dataset.py \
+    --data-root /workspace/Bench2Drive \
+    --bev-cache-dir "${NAVSIM_EXP_ROOT}/bench2drive_bev_cache_seg" \
+    --output-dir "${NAVSIM_EXP_ROOT}/bench2drive_cache_seg"
 ```
 
 **Full (all parameters):**
-
 ```bash
 python3 scripts/cache_bench2drive_dataset.py \
     --data-root /workspace/Bench2Drive \
-    --cache-path "${NAVSIM_EXP_ROOT}/bench2drive_cache" \
-    --bev-cache-dir "${NAVSIM_EXP_ROOT}/bench2drive_bev_cache" \
+    --cache-path "${NAVSIM_EXP_ROOT}/bench2drive_cache_seg" \
+    --bev-cache-dir "${NAVSIM_EXP_ROOT}/bench2drive_bev_cache_seg" \
     --map-dir /workspace/Bench2Drive-Map \
     --scenarios "scenario1" "scenario2" \
     --num-workers 16 \

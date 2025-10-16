@@ -2,6 +2,7 @@
 """
 Generate BEV semantic maps offline for Bench2Drive dataset.
 
+Supports both vector (sparse) and segmentation (dense) generation modes.
 This script uses Ray and a KDTree-based MapProcessor for high-performance,
 memory-efficient BEV map generation.
 """
@@ -15,7 +16,7 @@ import logging
 import ray
 from pathlib import Path
 from tqdm import tqdm
-from typing import Dict
+from typing import Dict, Optional
 
 from navsim.common.bench2drive_constants import (
     BEV_SEMANTIC_RESOLUTION,
@@ -27,6 +28,7 @@ from navsim.common.bev_map_utils import (
     extract_front_half_bev,
     generate_full_bev_from_map,
 )
+from navsim.common.bev_generation_factory import BEVGeneratorFactory
 from navsim.planning.simulation.planner.pdm_planner.utils.pdm_geometry_utils import normalize_angle
 
 
@@ -48,11 +50,20 @@ def worker_process_frame_ray(
     frame_path: Path,
     output_root_dir: Path,
     map_processor_refs: Dict[str, ray.ObjectRef],
-    generate_full: bool,
+    generation_type: str,
+    generator_params: Dict,
     overwrite: bool,
 ) -> bool:
     """
-    Ray worker task that uses the shared MapProcessor to generate a BEV map.
+    Ray worker task that generates a BEV map using the specified generation type.
+
+    Args:
+        frame_path: Path to frame annotation
+        output_root_dir: Output directory for BEV cache
+        map_processor_refs: Ray object references to MapProcessors
+        generation_type: Type of BEV generation ("vector" or "segmentation")
+        generator_params: Parameters for the generator
+        overwrite: Whether to overwrite existing files
     """
     frame_number = frame_path.stem.split(".")[0]
     scenario_name = frame_path.parent.parent.name
@@ -91,14 +102,27 @@ def worker_process_frame_ray(
         # Get the MapProcessor object from Ray's object store
         map_processor = ray.get(map_processor_refs[town_name])
 
-        # Generate full BEV map and extract front half
-        full_bev = generate_full_bev_from_map(
+        # Create the appropriate generator based on type
+        generator = BEVGeneratorFactory.create_generator(
+            generation_type=generation_type,
+            bev_height=256,  # Generate full 360 view
+            bev_width=256,
+            resolution=BEV_SEMANTIC_RESOLUTION,
+            view_type="full",
+            **generator_params
+        )
+
+        # Generate full BEV map using the selected generator
+        full_bev = generator.generate_from_map(
             map_data=map_processor,
             ego_points=ego_points,
             ego_heading_rad=ego_heading_rad,
-            resolution=BEV_SEMANTIC_RESOLUTION,
         )
+
+        # Extract front half for NavSim compatibility
         front_bev = extract_front_half_bev(full_bev)
+
+        # Save with generation type marker
         np.savez_compressed(
             output_path,
             full_bev=full_bev.astype(np.float32),
@@ -106,6 +130,7 @@ def worker_process_frame_ray(
             ego_points=ego_points,
             ego_heading_rad=ego_heading_rad,
             frame_idx=int(frame_number),
+            generation_type=generation_type,  # Mark the generation type
         )
         return True
     except Exception as e:
@@ -123,6 +148,31 @@ def main():
     )
     parser.add_argument(
         "--output-dir", type=str, required=True, help="Output directory for BEV cache"
+    )
+    parser.add_argument(
+        "--generation-type",
+        type=str,
+        default="vector",
+        choices=["vector", "segmentation"],
+        help="Type of BEV generation: 'vector' (sparse) or 'segmentation' (dense) (default: vector)"
+    )
+    parser.add_argument(
+        "--lane-width",
+        type=float,
+        default=3.5,
+        help="Lane width in meters for segmentation mode (default: 3.5)"
+    )
+    parser.add_argument(
+        "--fill-drivable",
+        action="store_true",
+        default=True,
+        help="Fill entire drivable areas in segmentation mode (default: True)"
+    )
+    parser.add_argument(
+        "--lane-thickness",
+        type=float,
+        default=0.4,
+        help="Lane line thickness in meters for vector mode (default: 0.4)"
     )
     parser.add_argument(
         "--scenarios", type=str, nargs="+", help="Specific scenarios to process (default: all)"
@@ -143,6 +193,21 @@ def main():
         num_cpus=args.workers, logging_level=logging.INFO if not args.verbose else logging.DEBUG
     )
     logger.info(f"Ray initialized with {ray.available_resources().get('CPU', 0)} CPUs.")
+
+    # Prepare generator parameters based on type
+    generator_params = {}
+    if args.generation_type == "segmentation":
+        generator_params = {
+            "lane_width": args.lane_width,
+            "fill_drivable_area": args.fill_drivable,
+            "use_lane_connectivity": True,
+        }
+        logger.info(f"Using SEGMENTATION mode: lane_width={args.lane_width}m, fill={args.fill_drivable}")
+    else:
+        generator_params = {
+            "lane_thickness": args.lane_thickness,
+        }
+        logger.info(f"Using VECTOR mode: lane_thickness={args.lane_thickness}m")
 
     try:
         data_root, map_dir, output_dir = (
@@ -194,7 +259,8 @@ def main():
         logger.info(f"Dispatching {len(all_frame_files)} frames to Ray workers...")
         result_refs = [
             worker_process_frame_ray.remote(
-                frame, output_dir, map_processor_refs, True, args.overwrite
+                frame, output_dir, map_processor_refs,
+                args.generation_type, generator_params, args.overwrite
             )
             for frame in all_frame_files
         ]

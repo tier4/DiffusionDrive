@@ -19,8 +19,6 @@ from navsim.common.bench2drive_constants import (
     BENCH2DRIVE_LIDAR_RANGE_M,
 )
 from navsim.common.bev_map_utils import (
-    load_map_data,
-    generate_bev_from_map,
     transform_points_to_ego,
     transform_heading_to_ego,
 )
@@ -652,6 +650,7 @@ class Bench2DriveScene:
 
         # Check if cached BEV exists
         map_bev = None
+        cached_generation_type = None
         if hasattr(self.config, "bev_cache_dir") and self.config.bev_cache_dir:
             cache_dir = Path(self.config.bev_cache_dir)
             scenario_name = self.scene_info["scenario"]  # Get scenario name
@@ -668,69 +667,34 @@ class Bench2DriveScene:
                         # Extract front half
                         full_bev = cached_data["full_bev"]
                         map_bev = full_bev[:128, :]  # Front half
-                    print(f"Loaded cached BEV from {cache_path}")
+
+                    # Check generation type if available
+                    if "generation_type" in cached_data:
+                        cached_generation_type = str(cached_data["generation_type"])
+                        print(f"Loaded cached BEV ({cached_generation_type} mode) from {cache_path}")
+                    else:
+                        # Assume vector mode for older caches without type marker
+                        cached_generation_type = "vector"
+                        print(f"Loaded cached BEV (legacy vector mode) from {cache_path}")
                 except Exception as e:
                     print(f"Failed to load cached BEV: {e}")
             else:
                 # If BEV cache directory is provided but file doesn't exist, raise error
+                generation_hint = ""
+                if hasattr(self.config, "bev_generation_type"):
+                    generation_hint = f" ({self.config.bev_generation_type} mode)"
                 raise FileNotFoundError(
                     f"BEV cache file not found: {cache_path}\n"
-                    f"Please run generate_bev_cache.py first to generate BEV maps for scenario '{scenario_name}'"
+                    f"Please run generate_segmentation_bev_cache.py{generation_hint} first to generate BEV maps for scenario '{scenario_name}'"
                 )
 
-        # If no cached BEV, try to generate from HD map if available
-        if map_bev is None and hasattr(self.config, "map_dir") and self.config.map_dir:
-
-            # Extract town name from scenario
-            parts = self.scene_info["scenario"].split("_")
-            town_name = None
-            for part in parts:
-                if part.startswith("Town"):
-                    town_name = part
-                    break
-
-            if town_name:
-                map_path = Path(self.config.map_dir) / f"{town_name}_HD_map.npz"
-                if map_path.exists():
-                    # Load map data
-                    map_data = load_map_data(map_path)
-
-                    # Get world2ego transform and ego position
-                    anno = self._load_annotation(frame_idx)
-                    if anno and "bounding_boxes" in anno:
-                        # Find ego vehicle in bounding boxes
-                        ego_vehicle = None
-                        for box in anno["bounding_boxes"]:
-                            if box["class"] == "ego_vehicle":
-                                ego_vehicle = box
-                                break
-
-                        if ego_vehicle is None:
-                            raise ValueError("Ego vehicle not found in bounding boxes")
-
-                        ego_points = np.array(
-                            ego_vehicle["center"]
-                        )  # [x, y, z] in world coordinates
-                        ego_heading_rad = np.radians(
-                            ego_vehicle["rotation"][2]
-                        )  # Convert degrees to radians
-
-                        # Generate BEV from map
-                        map_bev = generate_bev_from_map(
-                            map_data=map_data,
-                            ego_points=ego_points,
-                            ego_heading_rad=ego_heading_rad,
-                            bev_height=BEV_SEMANTIC_HEIGHT,
-                            bev_width=BEV_SEMANTIC_WIDTH,
-                            resolution=BEV_SEMANTIC_RESOLUTION,  # 0.332m/pixel for 85m coverage
-                            lane_thickness=0.4,
-                            # max_distance will be automatically calculated based on BEV coverage
-                        )
-                        print(f"Generated BEV from HD map for {town_name}")
+        # No fallback generation allowed - must have cache
         if map_bev is None:
             raise ValueError(
-                "No BEV map available. Please ensure either a BEV cache directory is set or "
-                "a valid HD map is provided in the configuration."
+                f"BEV cache not found. Training requires pre-generated BEV cache.\n"
+                f"Run: python3 scripts/generate_bev_cache.py --generation-type [vector|segmentation]\n"
+                f"Cache directory: {self.config.bev_cache_dir if hasattr(self.config, 'bev_cache_dir') else 'NOT SET'}\n"
+                f"Scenario: {self.scene_info.get('scenario', 'unknown')}"
             )
 
         # Use two-stage approach (static cache + dynamic overlay)
