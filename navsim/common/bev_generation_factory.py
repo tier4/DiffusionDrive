@@ -116,13 +116,10 @@ class BEVGeneratorFactory:
         segmentation_params = {}
 
         if "lane_width" in kwargs:
-            segmentation_params["lane_width"] = kwargs["lane_width"]
+            segmentation_params["road_width"] = kwargs["lane_width"]  # Map to road_width parameter
 
-        if "fill_drivable_area" in kwargs:
-            segmentation_params["fill_drivable_area"] = kwargs["fill_drivable_area"]
-
-        if "use_lane_connectivity" in kwargs:
-            segmentation_params["use_lane_connectivity"] = kwargs["use_lane_connectivity"]
+        # Note: fill_drivable_area and use_lane_connectivity are ignored
+        # as the simplified generator always fills roads
 
         return segmentation_params
 

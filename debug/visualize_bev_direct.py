@@ -603,6 +603,13 @@ def main():
         action="store_true",
         help="Use target scenes from debug/target_scenes.txt",
     )
+    parser.add_argument(
+        "--generation-type",
+        type=str,
+        default="vector",
+        choices=["vector", "segmentation"],
+        help="BEV generation type for debug mode (default: vector)",
+    )
     args = parser.parse_args()
 
     # Validate mutually exclusive arguments
@@ -698,13 +705,17 @@ def main():
             data_root=data_root,
             scenarios=[scenario],
             sampling_rate=5,  # No downsampling for test data
-            num_frames=10,  # Use fewer frames for the window
+            num_frames=13,  # Need at least 4 history + 1 current + 8 future = 13 frames
             num_history_frames=4,
-            num_future_frames=6,
+            num_future_frames=8,  # Need 8 future frames for 8 waypoints
             extract_tar=False,
             map_dir=map_dir,
             bev_cache_dir=bev_cache_dir,
+            debug_mode=True,  # Enable debug mode to allow on-the-fly BEV generation
         )
+
+        # Store generation type in config for debug mode
+        config.debug_generation_type = args.generation_type
 
         # Create scene loader
         scene_loader = Bench2DriveSceneLoader(config)
@@ -740,7 +751,7 @@ def main():
                 frame_idx = int(t.split("_")[-1])
                 # Check if this scene window would include frame 20
                 # (frame_idx is the starting frame of the window)
-                if frame_idx <= 20 and frame_idx + config.num_frames > 20:
+                if frame_idx <= 20 and frame_idx + 13 > 20:  # 13 frames in window
                     token = t
                     print(f"Using token {token} which includes frame 20")
                     break
@@ -777,6 +788,15 @@ def main():
         # Compute targets (including BEV with agents)
         print("Computing targets (including BEV generation)...")
         targets = target_builder.compute_targets(scene)
+
+        if targets is None:
+            # FAIL FAST AND LOUD - don't silently return
+            raise ValueError(
+                f"Cannot generate BEV: compute_targets returned None. "
+                f"This typically happens when there aren't enough future frames for trajectory. "
+                f"Scene has {len(scene.anno_paths)} total frames. "
+                f"Try using an earlier frame in the sequence."
+            )
 
         # DEBUG: Add detailed vehicle detection debugging
         print("\n=== DETAILED VEHICLE DETECTION DEBUG ===")

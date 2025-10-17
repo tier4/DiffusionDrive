@@ -688,8 +688,72 @@ class Bench2DriveScene:
                     f"Please run generate_segmentation_bev_cache.py{generation_hint} first to generate BEV maps for scenario '{scenario_name}'"
                 )
 
-        # No fallback generation allowed - must have cache
-        if map_bev is None:
+        # Check if we're in debug mode and can generate on-the-fly
+        if map_bev is None and getattr(self.config, 'debug_mode', False) and hasattr(self.config, 'map_dir') and self.config.map_dir:
+            # Debug mode: Generate BEV on-the-fly from HD map
+            from navsim.common.bev_generation_factory import BEVGeneratorFactory
+            from navsim.common.bev_map_utils import MapProcessor, load_map_data
+
+            # Get generation type from config (default to vector if not specified)
+            generation_type = getattr(self.config, 'debug_generation_type', 'vector')
+            print(f"Debug mode: Generating BEV on-the-fly using {generation_type} format for frame {frame_idx}")
+
+            # Create generator based on specified type
+            generator_params = {
+                "generation_type": generation_type,
+                "bev_height": 128,
+                "bev_width": 256,
+                "resolution": BEV_SEMANTIC_RESOLUTION,
+                "view_type": "front"
+            }
+
+            # Add type-specific parameters
+            if generation_type == "segmentation":
+                generator_params["lane_width"] = 5.0  # Use 5m width for better coverage
+
+            generator = BEVGeneratorFactory.create_generator(**generator_params)
+
+            # Load map data
+            # Extract town name from scenario
+            scenario_name = self.scene_info["scenario"]
+            town_name = None
+            for part in scenario_name.split("_"):
+                if part.startswith("Town"):
+                    town_name = part
+                    break
+            if not town_name:
+                raise ValueError(f"Cannot extract town name from scenario: {scenario_name}")
+
+            map_path = Path(self.config.map_dir) / f"{town_name}_HD_map.npz"
+            if not map_path.exists():
+                raise FileNotFoundError(f"HD map not found: {map_path}")
+
+            map_data = load_map_data(map_path)
+            map_processor = MapProcessor(map_data)
+
+            # Get ego state
+            current_anno = self._load_annotation(frame_idx)
+            ego_box = None
+            for box in current_anno["bounding_boxes"]:
+                if box["class"] == "ego_vehicle":
+                    ego_box = box
+                    break
+
+            if ego_box is None:
+                raise ValueError(f"Ego vehicle not found in frame {frame_idx}")
+
+            ego_points = np.array(ego_box["center"])
+            ego_heading_rad = np.radians(ego_box["rotation"][2])
+
+            # Generate BEV
+            map_bev = generator.generate_from_map(
+                map_data=map_processor,
+                ego_points=ego_points,
+                ego_heading_rad=ego_heading_rad
+            )
+
+        # For training (non-debug mode), BEV cache is required
+        elif map_bev is None:
             raise ValueError(
                 f"BEV cache not found. Training requires pre-generated BEV cache.\n"
                 f"Run: python3 scripts/generate_bev_cache.py --generation-type [vector|segmentation]\n"

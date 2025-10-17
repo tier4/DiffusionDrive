@@ -26,6 +26,7 @@ class Bench2DriveConfig:
     extract_tar: bool = True  # Whether to extract tar files
     map_dir: Optional[Path] = None  # Directory containing HD map NPZ files
     bev_cache_dir: Optional[Path] = None  # Directory containing pre-generated BEV maps
+    debug_mode: bool = False  # Allow on-the-fly BEV generation for debugging (bypasses cache requirement)
 
 
 class Bench2DriveSceneLoader:

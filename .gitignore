@@ -136,3 +136,13 @@ download/*.json
 
 # debug
 debug/
+# Ignore output directories and files
+output*/
+output_*/
+
+# Ignore backup files
+*.backup
+*.backup[0-9]
+*.backup[0-9][0-9]
+
+CLAUDE.md
