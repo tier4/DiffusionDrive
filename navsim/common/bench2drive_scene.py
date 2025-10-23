@@ -199,6 +199,13 @@ class Bench2DriveScene:
             lidars=lidars_list,
         )
 
+    # TODO: REFACTOR - These two methods are nearly identical, differing only in:
+    #   1. Path source: self.anno_paths[frame_idx] vs self.all_frames[abs_idx]
+    #   2. Index type: relative vs absolute
+    # Should be merged into a single method like:
+    #   def _load_annotation(self, idx: int, absolute: bool = False) -> Dict
+    # This would eliminate code duplication and make the code more maintainable.
+
     def _load_annotation(self, frame_idx: int) -> Dict:
         """Load annotation for a specific frame (legacy mode)."""
         if frame_idx in self._annotations_cache:
@@ -723,7 +730,16 @@ class Bench2DriveScene:
         if frame_idx == -1:
             frame_idx = self.history_frames - 1  # NavSim convention: use middle frame
 
-        anno = self._load_annotation(frame_idx)
+        # Load annotation based on mode
+        # TODO: REFACTOR - Merge _load_annotation() and _load_annotation_absolute() into a single method
+        # These two methods do the same thing (load annotation from path) but use different indexing.
+        # Should have one method that takes both relative and absolute index parameters.
+        if self.config.sliding_mode and self.all_frames is not None:
+            # True sliding window mode - use absolute index
+            anno = self._load_annotation_absolute(self.start_idx)
+        else:
+            # Legacy mode - use relative frame index
+            anno = self._load_annotation(frame_idx)
 
         # Find ego vehicle in bounding boxes - REQUIRED
         ego_box = None
@@ -876,7 +892,15 @@ class Bench2DriveScene:
         if hasattr(self.config, "bev_cache_dir") and self.config.bev_cache_dir:
             cache_dir = Path(self.config.bev_cache_dir)
             scenario_name = self.scene_info["scenario"]  # Get scenario name
-            frame_number = self.anno_paths[frame_idx].stem.split(".")[0]
+            # Get frame number based on mode
+            # TODO: REFACTOR - Duplicated frame path logic. Should have a unified method get_frame_path(idx, absolute=False)
+            # that handles both sliding window (all_frames) and legacy (anno_paths) modes.
+            if self.config.sliding_mode and self.all_frames is not None:
+                # True sliding window mode - use absolute index
+                frame_number = self.all_frames[self.start_idx].stem.split(".")[0]
+            else:
+                # Legacy mode - use relative frame index
+                frame_number = self.anno_paths[frame_idx].stem.split(".")[0]
             cache_path = cache_dir / scenario_name / f"{frame_number}.npz"
 
             if cache_path.exists():
