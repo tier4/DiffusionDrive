@@ -91,16 +91,26 @@ class Bench2DriveScene:
         # Log sampling rate info once at initialization
         self._log_sampling_rate_once()
 
-        # Frame information
-        self.anno_paths = scene_info["frames"]
-        self.base_path = scene_info["base_path"]
+        # Frame information - handle both modes
+        if config.sliding_mode and "all_frames" in scene_info:
+            # True sliding window mode
+            self.all_frames = scene_info["all_frames"]
+            self.start_idx = scene_info["start_idx"]  # Current frame in 10Hz
+            self.base_path = Path(scene_info["all_frames"][0]).parent.parent
+            self.anno_paths = None  # Not used in sliding mode
+        else:
+            # Legacy mode
+            self.all_frames = None
+            self.start_idx = scene_info.get("start_idx", 0)
+            self.anno_paths = scene_info["frames"]
+            self.base_path = scene_info["base_path"]
 
         self.history_frames = config.num_history_frames
         self.future_frames = config.num_future_frames
 
         # Token for compatibility
         self.token = scene_info.get(
-            "token", f"{scene_info['scenario']}_{scene_info['start_idx']:05d}"
+            "token", f"{scene_info['scenario']}_{self.start_idx:05d}"
         )
 
     def _log_sampling_rate_once(self):
@@ -139,20 +149,48 @@ class Bench2DriveScene:
         lidars_list = []
         ego_statuses_list = []
 
-        # Load data for history frames including current frame
-        # If history_frames=4, we want frames at indices [frame_idx-3, frame_idx-2, frame_idx-1, frame_idx]
-        for i in range(max(0, frame_idx - self.history_frames + 1), frame_idx + 1):
-            # Load annotation
-            anno = self._load_annotation(i)
+        if self.config.sliding_mode and self.all_frames is not None:
+            # TRUE SLIDING WINDOW MODE: On-demand downsampling
+            # Current frame is at self.start_idx in 10Hz
+            # History frames are at: start_idx - 20, start_idx - 15, start_idx - 10, start_idx - 5
+            # (for sampling_rate=5 and num_history_frames=4)
 
-            # Load sensor data
-            cameras = self._load_cameras(i, anno)
-            lidar = self._load_lidar(i, anno)
-            ego_status = self._extract_ego_status(anno)
+            # Calculate absolute 10Hz indices for history frames
+            for hist_offset in range(self.history_frames - 1, -1, -1):
+                # Get the 10Hz index for this history frame
+                abs_idx = self.start_idx - (hist_offset * self.config.sampling_rate)
 
-            cameras_list.append(cameras)
-            lidars_list.append(lidar)
-            ego_statuses_list.append(ego_status)
+                # Ensure index is valid
+                if abs_idx < 0 or abs_idx >= len(self.all_frames):
+                    raise ValueError(f"Invalid frame index {abs_idx} for scene {self.token}")
+
+                # Load annotation at this absolute index
+                anno = self._load_annotation_absolute(abs_idx)
+
+                # Load sensor data
+                cameras = self._load_cameras_absolute(abs_idx, anno)
+                lidar = self._load_lidar_absolute(abs_idx, anno)
+                ego_status = self._extract_ego_status(anno)
+
+                cameras_list.append(cameras)
+                lidars_list.append(lidar)
+                ego_statuses_list.append(ego_status)
+        else:
+            # LEGACY MODE: Use pre-downsampled frames
+            # Load data for history frames including current frame
+            # If history_frames=4, we want frames at indices [frame_idx-3, frame_idx-2, frame_idx-1, frame_idx]
+            for i in range(max(0, frame_idx - self.history_frames + 1), frame_idx + 1):
+                # Load annotation
+                anno = self._load_annotation(i)
+
+                # Load sensor data
+                cameras = self._load_cameras(i, anno)
+                lidar = self._load_lidar(i, anno)
+                ego_status = self._extract_ego_status(anno)
+
+                cameras_list.append(cameras)
+                lidars_list.append(lidar)
+                ego_statuses_list.append(ego_status)
 
         # TODO: need to add a check for empty images or status here
         return AgentInput(
@@ -162,7 +200,7 @@ class Bench2DriveScene:
         )
 
     def _load_annotation(self, frame_idx: int) -> Dict:
-        """Load annotation for a specific frame."""
+        """Load annotation for a specific frame (legacy mode)."""
         if frame_idx in self._annotations_cache:
             return self._annotations_cache[frame_idx]
 
@@ -170,6 +208,17 @@ class Bench2DriveScene:
         anno = load_bench2drive_annotation(anno_path)
 
         self._annotations_cache[frame_idx] = anno
+        return anno
+
+    def _load_annotation_absolute(self, abs_idx: int) -> Dict:
+        """Load annotation for an absolute frame index (sliding window mode)."""
+        if abs_idx in self._annotations_cache:
+            return self._annotations_cache[abs_idx]
+
+        anno_path = self.all_frames[abs_idx]
+        anno = load_bench2drive_annotation(anno_path)
+
+        self._annotations_cache[abs_idx] = anno
         return anno
 
     def _load_cameras(self, frame_idx: int, anno: Dict) -> Cameras:
@@ -264,6 +313,83 @@ class Bench2DriveScene:
             cam_r0=camera_objects[7],  # Front-right
         )
 
+    def _load_cameras_absolute(self, abs_idx: int, anno: Dict) -> Cameras:
+        """
+        Load camera data for an absolute frame index (sliding window mode).
+
+        Returns Camera object with 8 views (matching NavSim format).
+        """
+        # Extract frame number from annotation filename
+        frame_path = self.all_frames[abs_idx]
+        frame_id = frame_path.stem.split(".")[0]  # e.g., "00000"
+        camera_base = self.base_path / "camera"
+
+        # Map NavSim 8-camera format to actual Bench2Drive camera names
+        camera_mapping = {
+            "CAM_FRONT": "rgb_front",
+            "CAM_FRONT_LEFT": "rgb_front_left",
+            "CAM_SIDE_LEFT": "rgb_front_left",  # Duplicate front-left for missing side-left
+            "CAM_BACK_LEFT": "rgb_back_left",
+            "CAM_BACK": "rgb_back",
+            "CAM_BACK_RIGHT": "rgb_back_right",
+            "CAM_SIDE_RIGHT": "rgb_front_right",  # Duplicate front-right for missing side-right
+            "CAM_FRONT_RIGHT": "rgb_front_right",
+        }
+
+        images = []
+        for navsim_name in [
+            "CAM_FRONT",
+            "CAM_FRONT_LEFT",
+            "CAM_SIDE_LEFT",
+            "CAM_BACK_LEFT",
+            "CAM_BACK",
+            "CAM_BACK_RIGHT",
+            "CAM_SIDE_RIGHT",
+            "CAM_FRONT_RIGHT",
+        ]:
+            b2d_name = camera_mapping[navsim_name]
+            img_path = camera_base / b2d_name / f"{frame_id}.jpg"
+
+            if img_path.exists():
+                # Load image using PIL (loads in RGB format)
+                img_pil = Image.open(img_path)
+
+                # Apply same JPEG compression as training to avoid train-val gap
+                from io import BytesIO
+
+                buffer = BytesIO()
+                img_pil.save(buffer, format="JPEG", quality=20)
+                buffer.seek(0)
+                img_pil = Image.open(buffer)
+
+                # Convert to numpy array (RGB format)
+                img = np.array(img_pil)
+            else:
+                # Missing camera data should not be silently ignored
+                raise FileNotFoundError(
+                    f"Camera image not found at {img_path}. "
+                    f"Missing sensor data should not be replaced with fake values."
+                )
+
+            images.append(img)
+
+        # Create individual Camera objects for each view
+        camera_objects = []
+        for img in images:
+            cam = CameraDataclass(image=img)
+            camera_objects.append(cam)
+
+        return Cameras(
+            cam_f0=camera_objects[0],  # Front
+            cam_l0=camera_objects[1],  # Front-left
+            cam_l1=camera_objects[2],  # Side-left (duplicate of front-left)
+            cam_l2=camera_objects[3],  # Back-left
+            cam_b0=camera_objects[4],  # Back
+            cam_r2=camera_objects[5],  # Back-right
+            cam_r1=camera_objects[6],  # Side-right (duplicate of front-right)
+            cam_r0=camera_objects[7],  # Front-right
+        )
+
     def _load_lidar(self, frame_idx: int, anno: Dict) -> Lidar:
         """
         Load LiDAR data for a frame.
@@ -272,6 +398,49 @@ class Bench2DriveScene:
         """
         # Extract frame number from annotation filename (e.g., "00000.json.gz" -> "00000")
         frame_id = self.anno_paths[frame_idx].stem.split(".")[0]
+        lidar_path = self.base_path / "lidar" / f"{frame_id}.laz"
+
+        if lidar_path.exists():
+            try:
+                # Load LAZ file
+                las = laspy.read(str(lidar_path))
+
+                # Extract points - keep in CARLA coordinates (no transformation)
+                points = np.vstack([las.x, las.y, las.z]).T
+
+                # Add intensity if available
+                if hasattr(las, "intensity"):
+                    intensity = las.intensity.reshape(-1, 1)
+                else:
+                    intensity = np.zeros((len(points), 1))
+
+                # Combine into point cloud [N, 4] (x, y, z, intensity)
+                point_cloud = np.hstack([points, intensity]).astype(np.float32)
+            except Exception as e:
+                # LiDAR loading errors should not be silently ignored
+                raise RuntimeError(
+                    f"Failed to load LiDAR data from {lidar_path}: {e}. "
+                    f"Corrupted sensor data should not be replaced with fake values."
+                )
+        else:
+            # Missing LiDAR data should not be silently ignored
+            raise FileNotFoundError(
+                f"LiDAR file not found at {lidar_path}. "
+                f"Missing sensor data should not be replaced with fake values."
+            )
+
+        # Create Lidar object with numpy array (not tensor)
+        return Lidar(lidar_pc=point_cloud)
+
+    def _load_lidar_absolute(self, abs_idx: int, anno: Dict) -> Lidar:
+        """
+        Load LiDAR data for an absolute frame index (sliding window mode).
+
+        Returns LiDAR object with point cloud.
+        """
+        # Extract frame number from annotation filename
+        frame_path = self.all_frames[abs_idx]
+        frame_id = frame_path.stem.split(".")[0]
         lidar_path = self.base_path / "lidar" / f"{frame_id}.laz"
 
         if lidar_path.exists():
@@ -378,7 +547,12 @@ class Bench2DriveScene:
         trajectory = []
 
         # Get ego information at current frame
-        current_anno = self._load_annotation(frame_idx)
+        if self.config.sliding_mode and self.all_frames is not None:
+            # True sliding window mode - current frame is at start_idx
+            current_anno = self._load_annotation_absolute(self.start_idx)
+        else:
+            # Legacy mode
+            current_anno = self._load_annotation(frame_idx)
 
         # Find ego vehicle in bounding boxes - REQUIRED
         ego_box = None
@@ -404,68 +578,116 @@ class Bench2DriveScene:
         # Use config's sampling_rate directly (loader may not be available in all contexts)
         sampling_rate = self.config.sampling_rate if hasattr(self.config, 'sampling_rate') else 5
 
-        if sampling_rate == 1:
-            # 10Hz evaluation mode: raw data at 0.1s intervals
-            frame_stride = 5  # Skip 5 frames to get 0.5s intervals
-        elif sampling_rate == 5:
-            # 2Hz training mode: pre-sampled data at 0.5s intervals
-            frame_stride = 1  # Use consecutive frames (already at 0.5s)
-        else:
-            raise ValueError(
-                f"Unsupported sampling_rate={sampling_rate}. "
-                f"DiffusionDrive only supports:\n"
-                f"  - sampling_rate=1 (10Hz evaluation data)\n"
-                f"  - sampling_rate=5 (2Hz training data)\n"
-                f"Model expects 0.5s intervals between trajectory points."
+        if self.config.sliding_mode and self.all_frames is not None:
+            # TRUE SLIDING WINDOW MODE: Always use sampling_rate for future frames
+            # Future frames are at: start_idx + 5, start_idx + 10, start_idx + 15, ...
+            max_future_frames = min(
+                NUM_FUTURE_WAYPOINTS,
+                (len(self.all_frames) - self.start_idx - 1) // sampling_rate
             )
 
-        # Limit to available frames to prevent out-of-bounds errors
-        max_future_frames = min(
-            NUM_FUTURE_WAYPOINTS,
-            (len(self.anno_paths) - frame_idx - 1) // frame_stride
-        )
+            for i in range(1, max_future_frames + 1):
+                future_abs_idx = self.start_idx + (i * sampling_rate)
 
-        for i in range(1, max_future_frames + 1):
-            future_idx = frame_idx + (i * frame_stride)
-
-            # Double-check bounds (should not fail with the limit above)
-            if future_idx >= len(self.anno_paths):
-                logger.warning(
-                    f"Stopping trajectory at {len(trajectory)} waypoints "
-                    f"due to insufficient future frames"
-                )
-                break
-
-            future_anno = self._load_annotation(future_idx)
-
-            # Find future ego position
-            future_ego_box = None
-            for box in future_anno["bounding_boxes"]:
-                if box["class"] == "ego_vehicle":
-                    future_ego_box = box
+                # Double-check bounds
+                if future_abs_idx >= len(self.all_frames):
+                    logger.warning(
+                        f"Stopping trajectory at {len(trajectory)} waypoints "
+                        f"due to insufficient future frames"
+                    )
                     break
 
-            if future_ego_box is None:
-                raise ValueError(f"Ego vehicle not found in future frame {future_idx}")
+                future_anno = self._load_annotation_absolute(future_abs_idx)
 
-            # 2. Transform Heading using standardized function with normalization
-            future_heading_deg = future_ego_box["rotation"][2]
-            future_heading_rad = normalize_angle(np.radians(future_heading_deg))
-            future_heading_in_ego = transform_heading_to_ego(
-                future_heading_rad, ego_heading_rad, normalize=True
+                # Find future ego position
+                future_ego_box = None
+                for box in future_anno["bounding_boxes"]:
+                    if box["class"] == "ego_vehicle":
+                        future_ego_box = box
+                        break
+
+                if future_ego_box is None:
+                    raise ValueError(f"Ego vehicle not found in future frame {future_abs_idx}")
+
+                # Transform heading and position to ego frame
+                future_heading_deg = future_ego_box["rotation"][2]
+                future_heading_rad = normalize_angle(np.radians(future_heading_deg))
+                future_heading_in_ego = transform_heading_to_ego(
+                    future_heading_rad, ego_heading_rad, normalize=True
+                )
+
+                future_world_position = np.array(future_ego_box["center"])
+                future_x_in_ego, future_y_in_ego, _ = transform_points_to_ego(
+                    points=future_world_position,
+                    ego_points=ego_position_world,
+                    ego_heading_rad=ego_heading_rad,
+                ).tolist()[0]
+
+                trajectory.append([future_x_in_ego, future_y_in_ego, future_heading_in_ego])
+        else:
+            # LEGACY MODE: Use pre-downsampled frames
+            if sampling_rate == 1:
+                # 10Hz evaluation mode: raw data at 0.1s intervals
+                frame_stride = 5  # Skip 5 frames to get 0.5s intervals
+            elif sampling_rate == 5:
+                # 2Hz training mode: pre-sampled data at 0.5s intervals
+                frame_stride = 1  # Use consecutive frames (already at 0.5s)
+            else:
+                raise ValueError(
+                    f"Unsupported sampling_rate={sampling_rate}. "
+                    f"DiffusionDrive only supports:\n"
+                    f"  - sampling_rate=1 (10Hz evaluation data)\n"
+                    f"  - sampling_rate=5 (2Hz training data)\n"
+                    f"Model expects 0.5s intervals between trajectory points."
+                )
+
+            # Limit to available frames to prevent out-of-bounds errors
+            max_future_frames = min(
+                NUM_FUTURE_WAYPOINTS,
+                (len(self.anno_paths) - frame_idx - 1) // frame_stride
             )
 
-            # transform to ego position in carla
-            # I did not using the world2ego cause after investigation
-            # confirm that the accuracy is bad
-            future_world_position = np.array(future_ego_box["center"])
-            future_x_in_ego, future_y_in_ego, _ = transform_points_to_ego(
-                points=future_world_position,
-                ego_points=ego_position_world,
-                ego_heading_rad=ego_heading_rad,
-            ).tolist()[0]
+            for i in range(1, max_future_frames + 1):
+                future_idx = frame_idx + (i * frame_stride)
 
-            trajectory.append([future_x_in_ego, future_y_in_ego, future_heading_in_ego])
+                # Double-check bounds (should not fail with the limit above)
+                if future_idx >= len(self.anno_paths):
+                    logger.warning(
+                        f"Stopping trajectory at {len(trajectory)} waypoints "
+                        f"due to insufficient future frames"
+                    )
+                    break
+
+                future_anno = self._load_annotation(future_idx)
+
+                # Find future ego position
+                future_ego_box = None
+                for box in future_anno["bounding_boxes"]:
+                    if box["class"] == "ego_vehicle":
+                        future_ego_box = box
+                        break
+
+                if future_ego_box is None:
+                    raise ValueError(f"Ego vehicle not found in future frame {future_idx}")
+
+                # 2. Transform Heading using standardized function with normalization
+                future_heading_deg = future_ego_box["rotation"][2]
+                future_heading_rad = normalize_angle(np.radians(future_heading_deg))
+                future_heading_in_ego = transform_heading_to_ego(
+                    future_heading_rad, ego_heading_rad, normalize=True
+                )
+
+                # transform to ego position in carla
+                # I did not using the world2ego cause after investigation
+                # confirm that the accuracy is bad
+                future_world_position = np.array(future_ego_box["center"])
+                future_x_in_ego, future_y_in_ego, _ = transform_points_to_ego(
+                    points=future_world_position,
+                    ego_points=ego_position_world,
+                    ego_heading_rad=ego_heading_rad,
+                ).tolist()[0]
+
+                trajectory.append([future_x_in_ego, future_y_in_ego, future_heading_in_ego])
 
         # Return None if we don't have enough future frames
         # This prevents training on fake/padded data

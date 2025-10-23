@@ -42,9 +42,34 @@ python3 navsim/planning/script/run_bench2drive_training.py \
 
 ### Data Processing
 
-- `cache_bench2drive_dataset.py` - Generate Bench2Drive training cache
-- `generate_bev_cache.py` - Generate BEV map cache
-- `generate_b2d_plan_anchors.py` - Generate trajectory anchors for Bench2Drive
+#### `cache_bench2drive_dataset.py`
+Generate Bench2Drive training cache with true sliding window support.
+
+**NEW Default Mode (True Sliding Window):**
+- Slides through ALL 10Hz frames for ~5x more training samples
+- Generates ~1000 samples per scenario (vs ~200 in legacy mode)
+```bash
+python3 scripts/cache_bench2drive_dataset.py \
+    --data-root /workspace/Bench2Drive-Base \
+    --cache-path "${NAVSIM_EXP_ROOT}/bench2drive_cache_v6" \
+    --bev-cache-dir "${NAVSIM_EXP_ROOT}/bench2drive_bev_cache_seg"
+```
+
+**Legacy Mode:**
+- Use `--use-hardcoded-config` flag for backward compatibility
+```bash
+python3 scripts/cache_bench2drive_dataset.py \
+    --data-root /workspace/Bench2Drive-Base \
+    --cache-path "${NAVSIM_EXP_ROOT}/bench2drive_cache_v4" \
+    --bev-cache-dir "${NAVSIM_EXP_ROOT}/bench2drive_bev_cache_seg" \
+    --use-hardcoded-config
+```
+
+#### `generate_bev_cache.py`
+Generate BEV map cache (required before training cache).
+
+#### `generate_b2d_plan_anchors.py`
+Generate trajectory anchors for Bench2Drive.
 
 ### Visualization Scripts
 

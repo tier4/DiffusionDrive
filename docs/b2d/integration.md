@@ -16,7 +16,9 @@ The implementation provides a complete data processing pipeline that relies on a
 
 The integration is modular, consisting of several key Python scripts and configuration files.
 
-* **Data Loader** (`navsim/common/bench2drive_dataloader.py`): Loads the Bench2Drive dataset structure, handles temporal downsampling from 10Hz to 2Hz, and creates sliding windows to generate scenes.
+* **Data Loader** (`navsim/common/bench2drive_dataloader.py`): Loads the Bench2Drive dataset structure and creates scenes.
+  - **NEW Default (v6)**: True sliding window through ALL 10Hz frames with on-demand 2Hz downsampling (~1000 samples/scenario)
+  - **Legacy (v4)**: Downsamples to 2Hz first, then slides window (~200 samples/scenario)
 * **Scene Representation** (`navsim/common/bench2drive_scene.py`): Represents a sequence of frames, loads sensor data, and extracts ego status and agent information.
 * **Feature Builder** (`navsim/agents/diffusiondrive/transfuser_features_b2d.py`): Processes raw data from the scene into feature tensors for the model (camera, LiDAR, status).
 * **Dataset Wrapper** (`navsim/planning/training/bench2drive_dataset.py`): A PyTorch-compatible dataset class that wraps the data loader and feature builder, which relies on a pre-cached dataset for training.
@@ -34,7 +36,9 @@ The pipeline processes raw Bench2Drive data and converts it into features and ta
 ### 3.1 Data Flow
 
 1. **Raw Data**: The data loader accesses the raw Bench2Drive data, including camera images, LiDAR point clouds, and annotation files.
-2. **Scene Creation**: The `Bench2DriveSceneLoader` creates scenes by applying a sliding window over the raw data, downsampling it from 10Hz to 2Hz.
+2. **Scene Creation**: The `Bench2DriveSceneLoader` creates scenes:
+   - **v6 (Default)**: Slides window through ALL 10Hz frames, downsamples to 2Hz within each window
+   - **v4 (Legacy)**: Downsamples to 2Hz first, then applies sliding window
 3. **Feature Extraction**: The `Bench2DriveFeatureBuilder` processes each scene to generate model inputs:
       * **Camera**: Stitches the three front cameras (`rgb_front_left`, `rgb_front`, `rgb_front_right`) into a single `[3, 256, 1024]` tensor.
       * **LiDAR**: Creates a BEV histogram of size `[1, 256, 256]`.

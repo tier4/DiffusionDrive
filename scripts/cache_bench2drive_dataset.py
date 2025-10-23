@@ -170,6 +170,7 @@ def cache_bench2drive_dataset(
             extract_tar=bench2drive_config.extract_tar,
             map_dir=map_dir,
             bev_cache_dir=bev_cache_dir,
+            sliding_mode=bench2drive_config.get('sliding_mode', True),  # Default to true sliding window
         )
     else:
         # Fallback to hardcoded values (legacy behavior)
@@ -184,6 +185,7 @@ def cache_bench2drive_dataset(
             extract_tar=False,
             map_dir=map_dir,
             bev_cache_dir=bev_cache_dir,
+            sliding_mode=False,  # Legacy mode for backward compatibility
         )
 
     # Create scene loader to get tokens

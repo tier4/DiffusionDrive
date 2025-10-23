@@ -71,33 +71,42 @@ python3 scripts/generate_bev_cache.py \
 
 After generating BEV maps, create the training cache. Use the appropriate BEV cache directory based on your chosen mode.
 
-**For Vector Mode:**
+**NEW: True Sliding Window Mode (Default, Recommended):**
+- Slides through ALL 10Hz frames, downsamples within window
+- Generates ~5x more samples (~1000 per scenario vs ~200)
+- Better data utilization (95% of frames used)
 ```bash
 python3 scripts/cache_bench2drive_dataset.py \
-    --data-root /workspace/Bench2Drive \
-    --bev-cache-dir "${NAVSIM_EXP_ROOT}/bench2drive_bev_cache" \
-    --output-dir "${NAVSIM_EXP_ROOT}/bench2drive_cache"
+    --data-root /workspace/Bench2Drive-Base \
+    --cache-path "${NAVSIM_EXP_ROOT}/bench2drive_cache_v6" \
+    --bev-cache-dir "${NAVSIM_EXP_ROOT}/bench2drive_bev_cache_seg"
 ```
 
-**For Segmentation Mode (Recommended):**
+**Legacy Mode (Downsample-first):**
+- Downsamples to 2Hz first, then slides window
+- Generates ~200 samples per scenario
+- Use for backward compatibility with v4 caches
 ```bash
 python3 scripts/cache_bench2drive_dataset.py \
-    --data-root /workspace/Bench2Drive \
+    --data-root /workspace/Bench2Drive-Base \
+    --cache-path "${NAVSIM_EXP_ROOT}/bench2drive_cache_v4" \
     --bev-cache-dir "${NAVSIM_EXP_ROOT}/bench2drive_bev_cache_seg" \
-    --output-dir "${NAVSIM_EXP_ROOT}/bench2drive_cache_seg"
+    --use-hardcoded-config
 ```
 
 **Full (all parameters):**
 ```bash
 python3 scripts/cache_bench2drive_dataset.py \
-    --data-root /workspace/Bench2Drive \
-    --cache-path "${NAVSIM_EXP_ROOT}/bench2drive_cache_seg" \
+    --data-root /workspace/Bench2Drive-Base \
+    --cache-path "${NAVSIM_EXP_ROOT}/bench2drive_cache_v6" \
     --bev-cache-dir "${NAVSIM_EXP_ROOT}/bench2drive_bev_cache_seg" \
     --map-dir /workspace/Bench2Drive-Map \
     --scenarios "scenario1" "scenario2" \
     --num-workers 16 \
     --ray-address "ray://localhost:10001"
 ```
+
+**Note:** BEV cache does NOT need to be regenerated when switching between sliding modes.
 
 *Use `--help` for complete parameter documentation.*
 
