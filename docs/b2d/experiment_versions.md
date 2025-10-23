@@ -19,11 +19,22 @@ Below is the explanation of the different versions of the Bench2Drive experiment
   - **Approach**: Generate BEV maps using filled road surfaces instead of just lane lines
   - **Method**: Draw lanes with 5m width and apply morphological operations to connect road segments
   - **Goal**: Test if denser BEV representation improves model performance
-- `v6`: True sliding window sampling (2025-10-23)
+- `v6`: True sliding window + Zero history frames (2025-10-24)
   - **Cache Location**: `/workspace/navsim_workspace/cache/Bench2Drive-Base-training_cache-v6/`
-  - **Approach**: Slide through ALL 10Hz frames instead of downsampling first
+  - **Approach**: Slide through ALL 10Hz frames + Start from frame 0 (no history offset)
+  - **Key Changes**:
+    - `num_history_frames: 0` - Model doesn't need trajectory history
+    - `num_future_frames: 8` - Exactly 8 waypoints as required by model
+    - Fixed config inconsistency where `num_future_frames` was ignored in sliding mode
+    - Fixed frame indexing to properly handle zero history frames
   - **Method**: Each scene starts at consecutive 10Hz frames with on-demand 2Hz downsampling
-  - **Impact**: ~5x more training samples (~1000 per scenario vs ~200 in v4)
-  - **Data Utilization**: 95% of frames used (vs 19% in v4)
+  - **Impact**:
+    - ~6x more training samples (~1060 per scenario vs ~200 in v4)
+    - Extra 20 frames per scenario now usable (no history offset)
+    - Data Utilization: ~100% of frames used (vs 19% in v4)
+  - **Code Fixes**:
+    - Fixed `_load_annotation()` vs `_load_annotation_absolute()` confusion
+    - Fixed `get_agents()` and `get_bev_semantic_map()` for sliding mode
+    - Config values now actually control behavior (not hardcoded)
   - **Backward Compatibility**: Use `--use-hardcoded-config` flag for v4 legacy mode
-  - **Note**: BEV cache remains the same, only training cache changes
+  - **Note**: BEV cache remains the same (v3), only training cache changes

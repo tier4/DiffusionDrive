@@ -97,10 +97,15 @@ class Bench2DriveSceneLoader:
                 if self.config.sliding_mode:
                     # TRUE SLIDING WINDOW: Slide through all 10Hz frames
                     # Calculate frames needed for one sample
+                    # History span: 0 when num_history_frames=0 (start from frame 0)
                     history_span = self.config.num_history_frames * self.config.sampling_rate
-                    future_span = 8 * self.config.sampling_rate  # 8 future waypoints for trajectory
+
+                    # Future span: Use config value (8 future frames * sampling_rate)
+                    # At 2Hz training: 8 * 5 = 40 raw frames needed
+                    future_span = self.config.num_future_frames * self.config.sampling_rate
 
                     # Iterate through every possible starting position
+                    # Start from history_span (0 if no history) to ensure we have enough past frames
                     for start_idx in range(history_span, len(frames) - future_span):
                         # Generate unique token
                         token = f"{scenario_path.name}_{start_idx:05d}"

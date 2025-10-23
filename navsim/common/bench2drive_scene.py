@@ -140,9 +140,9 @@ class Bench2DriveScene:
         Returns:
             AgentInput object with cameras, lidars, and ego statuses
         """
-        # Default to current frame (NavSim convention: middle frame)
+        # Default to current frame (frame 0 when no history, otherwise last history frame)
         if frame_idx == -1:
-            frame_idx = self.history_frames - 1
+            frame_idx = max(0, self.history_frames - 1)
 
         # Prepare lists for multi-frame data
         cameras_list = []
@@ -152,22 +152,16 @@ class Bench2DriveScene:
         if self.config.sliding_mode and self.all_frames is not None:
             # TRUE SLIDING WINDOW MODE: On-demand downsampling
             # Current frame is at self.start_idx in 10Hz
-            # History frames are at: start_idx - 20, start_idx - 15, start_idx - 10, start_idx - 5
-            # (for sampling_rate=5 and num_history_frames=4)
+            # When history_frames=0: Only load current frame at start_idx
+            # When history_frames>0: Load history frames before start_idx
 
-            # Calculate absolute 10Hz indices for history frames
-            for hist_offset in range(self.history_frames - 1, -1, -1):
-                # Get the 10Hz index for this history frame
-                abs_idx = self.start_idx - (hist_offset * self.config.sampling_rate)
-
-                # Ensure index is valid
+            if self.history_frames == 0:
+                # No history: only load current frame
+                abs_idx = self.start_idx
                 if abs_idx < 0 or abs_idx >= len(self.all_frames):
                     raise ValueError(f"Invalid frame index {abs_idx} for scene {self.token}")
 
-                # Load annotation at this absolute index
                 anno = self._load_annotation_absolute(abs_idx)
-
-                # Load sensor data
                 cameras = self._load_cameras_absolute(abs_idx, anno)
                 lidar = self._load_lidar_absolute(abs_idx, anno)
                 ego_status = self._extract_ego_status(anno)
@@ -175,15 +169,35 @@ class Bench2DriveScene:
                 cameras_list.append(cameras)
                 lidars_list.append(lidar)
                 ego_statuses_list.append(ego_status)
+            else:
+                # Load history frames (including current frame)
+                for hist_offset in range(self.history_frames - 1, -1, -1):
+                    # Get the 10Hz index for this history frame
+                    abs_idx = self.start_idx - (hist_offset * self.config.sampling_rate)
+
+                    # Ensure index is valid
+                    if abs_idx < 0 or abs_idx >= len(self.all_frames):
+                        raise ValueError(f"Invalid frame index {abs_idx} for scene {self.token}")
+
+                    # Load annotation at this absolute index
+                    anno = self._load_annotation_absolute(abs_idx)
+
+                    # Load sensor data
+                    cameras = self._load_cameras_absolute(abs_idx, anno)
+                    lidar = self._load_lidar_absolute(abs_idx, anno)
+                    ego_status = self._extract_ego_status(anno)
+
+                    cameras_list.append(cameras)
+                    lidars_list.append(lidar)
+                    ego_statuses_list.append(ego_status)
         else:
             # LEGACY MODE: Use pre-downsampled frames
-            # Load data for history frames including current frame
-            # If history_frames=4, we want frames at indices [frame_idx-3, frame_idx-2, frame_idx-1, frame_idx]
-            for i in range(max(0, frame_idx - self.history_frames + 1), frame_idx + 1):
-                # Load annotation
+            # When history_frames=0: Only load current frame (frame_idx)
+            # When history_frames>0: Load history frames including current
+            if self.history_frames == 0:
+                # Only load current frame
+                i = frame_idx
                 anno = self._load_annotation(i)
-
-                # Load sensor data
                 cameras = self._load_cameras(i, anno)
                 lidar = self._load_lidar(i, anno)
                 ego_status = self._extract_ego_status(anno)
@@ -191,6 +205,20 @@ class Bench2DriveScene:
                 cameras_list.append(cameras)
                 lidars_list.append(lidar)
                 ego_statuses_list.append(ego_status)
+            else:
+                # Load history frames including current frame
+                for i in range(max(0, frame_idx - self.history_frames + 1), frame_idx + 1):
+                    # Load annotation
+                    anno = self._load_annotation(i)
+
+                    # Load sensor data
+                    cameras = self._load_cameras(i, anno)
+                    lidar = self._load_lidar(i, anno)
+                    ego_status = self._extract_ego_status(anno)
+
+                    cameras_list.append(cameras)
+                    lidars_list.append(lidar)
+                    ego_statuses_list.append(ego_status)
 
         # TODO: need to add a check for empty images or status here
         return AgentInput(
@@ -548,7 +576,8 @@ class Bench2DriveScene:
             Trajectory tensor [num_waypoints, 3] with (x, y, heading)
         """
         if frame_idx == -1:
-            frame_idx = self.history_frames - 1  # NavSim convention: use middle frame
+            # Use frame 0 when no history, otherwise use last history frame
+            frame_idx = max(0, self.history_frames - 1)
 
         # Collect future positions
         trajectory = []
@@ -728,7 +757,8 @@ class Bench2DriveScene:
                 Better for complex scenarios requiring full situational awareness
         """
         if frame_idx == -1:
-            frame_idx = self.history_frames - 1  # NavSim convention: use middle frame
+            # Use frame 0 when no history, otherwise use last history frame
+            frame_idx = max(0, self.history_frames - 1)
 
         # Load annotation based on mode
         # TODO: REFACTOR - Merge _load_annotation() and _load_annotation_absolute() into a single method
