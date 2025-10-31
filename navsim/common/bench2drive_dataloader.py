@@ -27,7 +27,9 @@ class Bench2DriveConfig:
     map_dir: Optional[Path] = None  # Directory containing HD map NPZ files
     bev_cache_dir: Optional[Path] = None  # Directory containing pre-generated BEV maps
     debug_mode: bool = False  # Allow on-the-fly BEV generation for debugging (bypasses cache requirement)
-    sliding_mode: bool = True  # If True, use true sliding window through all 10Hz frames
+    # DEPRECATED: 10Hz sliding window mode removed to simplify codebase
+    # sliding_mode: bool = True  # If True, use true sliding window through all 10Hz frames
+    sliding_mode: bool = False  # Force legacy mode only
 
 
 class Bench2DriveSceneLoader:
@@ -94,53 +96,55 @@ class Bench2DriveSceneLoader:
                 if len(frames) == 0:
                     raise ValueError(f"No frames found in scenario: {scenario_path}")
 
-                if self.config.sliding_mode:
-                    # TRUE SLIDING WINDOW: Slide through all 10Hz frames
-                    # Calculate frames needed for one sample
-                    # History span: 0 when num_history_frames=0 (start from frame 0)
-                    history_span = self.config.num_history_frames * self.config.sampling_rate
+                # DEPRECATED: 10Hz sliding window mode removed
+                # if self.config.sliding_mode:
+                #     # TRUE SLIDING WINDOW: Slide through all 10Hz frames
+                #     # Calculate frames needed for one sample
+                #     # History span: 0 when num_history_frames=0 (start from frame 0)
+                #     history_span = self.config.num_history_frames * self.config.sampling_rate
+                #
+                #     # Future span: Use config value (8 future frames * sampling_rate)
+                #     # At 2Hz training: 8 * 5 = 40 raw frames needed
+                #     future_span = self.config.num_future_frames * self.config.sampling_rate
+                #
+                #     # Iterate through every possible starting position
+                #     # Start from history_span (0 if no history) to ensure we have enough past frames
+                #     for start_idx in range(history_span, len(frames) - future_span):
+                #         # Generate unique token
+                #         token = f"{scenario_path.name}_{start_idx:05d}"
+                #
+                #         self.scenes[token] = {
+                #             "scenario": scenario_path.name,
+                #             "run": run_dir.name,
+                #             "all_frames": frames,  # Store all frames for on-demand access
+                #             "start_idx": start_idx,  # Current frame index in 10Hz
+                #             "token": token,
+                #         }
+                #         self.scene_tokens.append(token)
+                # else:
 
-                    # Future span: Use config value (8 future frames * sampling_rate)
-                    # At 2Hz training: 8 * 5 = 40 raw frames needed
-                    future_span = self.config.num_future_frames * self.config.sampling_rate
+                # LEGACY MODE ONLY: Downsample first, then slide
+                sampled_frames = frames[:: self.config.sampling_rate]
 
-                    # Iterate through every possible starting position
-                    # Start from history_span (0 if no history) to ensure we have enough past frames
-                    for start_idx in range(history_span, len(frames) - future_span):
-                        # Generate unique token
-                        token = f"{scenario_path.name}_{start_idx:05d}"
+                # Create scenes with sliding window
+                for i in range(len(sampled_frames) - self.config.num_frames + 1):
+                    scene_frames = sampled_frames[i : i + self.config.num_frames]
 
-                        self.scenes[token] = {
-                            "scenario": scenario_path.name,
-                            "run": run_dir.name,
-                            "all_frames": frames,  # Store all frames for on-demand access
-                            "start_idx": start_idx,  # Current frame index in 10Hz
-                            "token": token,
-                        }
-                        self.scene_tokens.append(token)
-                else:
-                    # LEGACY MODE: Downsample first, then slide
-                    sampled_frames = frames[:: self.config.sampling_rate]
+                    # Generate unique token
+                    token = f"{scenario_path.name}_{i:05d}"
 
-                    # Create scenes with sliding window
-                    for i in range(len(sampled_frames) - self.config.num_frames + 1):
-                        scene_frames = sampled_frames[i : i + self.config.num_frames]
+                    self.scenes[token] = {
+                        "scenario": scenario_path.name,
+                        "run": run_dir.name,
+                        "frames": scene_frames,
+                        "base_path": run_dir,
+                        "start_idx": i * self.config.sampling_rate,  # Original frame index
+                        "token": token,  # Store token in scene info
+                    }
+                    self.scene_tokens.append(token)
 
-                        # Generate unique token
-                        token = f"{scenario_path.name}_{i:05d}"
-
-                        self.scenes[token] = {
-                            "scenario": scenario_path.name,
-                            "run": run_dir.name,
-                            "frames": scene_frames,
-                            "base_path": run_dir,
-                            "start_idx": i * self.config.sampling_rate,  # Original frame index
-                            "token": token,  # Store token in scene info
-                        }
-                        self.scene_tokens.append(token)
-
-        mode_str = "true sliding window" if self.config.sliding_mode else "legacy downsampling"
-        print(f"Built scene index with {len(self.scenes)} scenes using {mode_str} mode")
+        # mode_str = "true sliding window" if self.config.sliding_mode else "legacy downsampling"
+        print(f"Built scene index with {len(self.scenes)} scenes using legacy downsampling mode")
 
     def _extract_tar_files(self) -> None:
         """Extract tar.gz files if needed."""

@@ -10,6 +10,7 @@ from navsim.agents.diffusiondrive.transfuser_features_b2d import (
     Bench2DriveTargetBuilder,
 )
 from navsim.common.bench2drive_dataloader import Bench2DriveConfig, Bench2DriveSceneLoader
+from navsim.common.cache_filtering import should_filter_sample
 from navsim.planning.training.dataset import dump_feature_target_to_pickle
 
 import logging
@@ -77,6 +78,20 @@ class SceneProcessor:
             # Skip samples with incomplete trajectory data
             if targets is None:
                 return token, "Skipped: insufficient future frames for complete trajectory"
+
+            # Skip samples that cause NaN during training:
+            # 1. No valid agents (NaN in Hungarian matching)
+            # 2. Zero ego trajectory (NaN in FP16 normalization)
+            # See docs/b2d/known_issues.md for details
+            if should_filter_sample(targets):
+                # Determine specific reason for debugging
+                from navsim.common.cache_filtering import has_valid_agents, has_nonzero_trajectory
+                if not has_valid_agents(targets):
+                    return token, "Skipped: no valid agents"
+                elif not has_nonzero_trajectory(targets):
+                    return token, "Skipped: zero trajectory"
+                else:
+                    return token, "Skipped: unknown filter reason"
 
             # Extract log name from token
             log_name = "_".join(token.split("_")[:-1])  # Remove frame number
@@ -170,7 +185,9 @@ def cache_bench2drive_dataset(
             extract_tar=bench2drive_config.extract_tar,
             map_dir=map_dir,
             bev_cache_dir=bev_cache_dir,
-            sliding_mode=bench2drive_config.get('sliding_mode', True),  # Default to true sliding window
+            # DEPRECATED: 10Hz sliding window mode removed
+            # sliding_mode=bench2drive_config.get('sliding_mode', True),  # Default to true sliding window
+            sliding_mode=False,  # Force legacy mode only
         )
     else:
         # Fallback to hardcoded values (legacy behavior)
@@ -313,11 +330,12 @@ def main():
     parser.add_argument(
         "--ray-address", type=str, default=None, help="Ray cluster address (default: local)"
     )
-    parser.add_argument(
-        "--use-hardcoded-config",
-        action="store_true",
-        help="Use hardcoded config values instead of loading from bench2drive.yaml (legacy mode)",
-    )
+    # DEPRECATED: 10Hz sliding window mode removed, legacy mode is now the only mode
+    # parser.add_argument(
+    #     "--use-hardcoded-config",
+    #     action="store_true",
+    #     help="Use hardcoded config values instead of loading from bench2drive.yaml (legacy mode)",
+    # )
 
     args = parser.parse_args()
 
@@ -358,7 +376,9 @@ def main():
             map_dir=args.map_dir,
             scenarios=args.scenarios,
             num_workers=args.num_workers,
-            use_config_file=not args.use_hardcoded_config,
+            # DEPRECATED: Always use config file now (no hardcoded mode)
+            # use_config_file=not args.use_hardcoded_config,
+            use_config_file=True,  # Always use config file
         )
     finally:
         # Shutdown Ray if we initialized it

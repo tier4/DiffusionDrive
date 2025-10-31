@@ -29,4 +29,5 @@ bench2drive:
   num_history_frames: ${scene_filter.num_history_frames}
   num_future_frames: ${scene_filter.num_future_frames}
   extract_tar: false # Not needed for cache-only training
-  sliding_mode: true # Use true sliding window through all 10Hz frames
+  # DEPRECATED: 10Hz sliding window mode removed to simplify codebase
+  # sliding_mode: true # Use true sliding window through all 10Hz frames

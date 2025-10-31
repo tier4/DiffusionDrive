@@ -20,6 +20,9 @@ MAX_AGENTS = 30  # From num_bounding_boxes in TransfuserConfig
 
 # Trajectory parameters
 NUM_FUTURE_WAYPOINTS = 8  # From trajectory_sampling: 4s / 0.5s = 8 waypoints
+FUTURE_TRAJECTORY_FRAME_STRIDE = 5  # Sample future trajectory every 5 frames (0.5s at 10Hz)
+# This ensures ground truth trajectories are always at 2Hz regardless of input sampling rate
+# Critical for evaluation: even when evaluating at 10Hz (sampling_rate=1), GT must be 2Hz
 
 # LiDAR parameters
 BENCH2DRIVE_LIDAR_RANGE_M = 85.0  # 85 meters range for Bench2Drive LiDAR (actual B2D data)
