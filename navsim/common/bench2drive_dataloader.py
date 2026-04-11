@@ -12,13 +12,14 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
+from navsim.common.abstract_carla_dataloader import AbstractCarlaDataConfig, AbstractCarlaSceneLoader
+
 
 @dataclass
-class Bench2DriveConfig:
+class Bench2DriveDataConfig(AbstractCarlaDataConfig):
     """Configuration for Bench2Drive dataset loading."""
 
-    data_root: Path
-    scenarios: List[str]  # List of scenario names to load
+    scenarios: List[str] = None  # List of scenario names to load
     sampling_rate: int = 5  # Downsample from 10Hz to 2Hz (take every 5th frame)
     num_frames: int = 30  # Number of frames per scene (15 seconds at 2Hz)
     num_history_frames: int = 4  # Past frames
@@ -32,7 +33,7 @@ class Bench2DriveConfig:
     sliding_mode: bool = False  # Force legacy mode only
 
 
-class Bench2DriveSceneLoader:
+class Bench2DriveSceneLoader(AbstractCarlaSceneLoader):
     """
     Scene loader for Bench2Drive dataset.
     Implements CARLA-native loading (Method 3) without coordinate transformations.
@@ -40,7 +41,7 @@ class Bench2DriveSceneLoader:
 
     def __init__(
         self,
-        config: Bench2DriveConfig,
+        config: Bench2DriveDataConfig,
         planner: Optional[any] = None,
         trajectory_sampling: Optional[any] = None,
     ):
@@ -52,7 +53,7 @@ class Bench2DriveSceneLoader:
             planner: Optional planner for expert demonstrations
             trajectory_sampling: Trajectory sampling configuration
         """
-        self.config = config
+        super().__init__(config)
         self.planner = planner
         self.trajectory_sampling = trajectory_sampling
 

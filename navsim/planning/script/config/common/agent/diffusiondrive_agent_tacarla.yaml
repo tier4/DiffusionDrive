@@ -1,0 +1,24 @@
+# DiffusionDrive agent configuration for TaCarla dataset
+_target_: navsim.agents.diffusiondrive.tacarla_agent.TaCarlaAgent
+_convert_: 'all'
+
+config:
+  _target_: navsim.agents.diffusiondrive.tacarla_config.TaCarlaConfig
+  _convert_: 'all'
+
+  trajectory_sampling:
+    _target_: nuplan.planning.simulation.trajectory.trajectory_sampling.TrajectorySampling
+    _convert_: 'all'
+    time_horizon: 4.0
+    interval_length: 0.5
+
+  latent: False
+
+  dataset_type: "tacarla"
+  num_bev_classes: 6
+
+  bkb_path: "/workspace/DiffusionDrive/download/pytorch_model.bin"
+  plan_anchor_path: "/workspace/DiffusionDrive/download/kmeans_tacarla_traj_20.npy"
+
+checkpoint_path: null
+lr: 5e-5

@@ -1,0 +1,22 @@
+# TaCarla dataset configuration
+
+dataset_type: tacarla
+
+scene_filter:
+  _target_: navsim.common.dataclasses.SceneFilter
+  _convert_: all
+  log_names: null
+  tokens: null
+  num_frames: 9  # 0 history + 1 current + 8 future
+  num_history_frames: 0
+  num_future_frames: 8
+  frame_interval: 1
+  has_route: true
+  max_scenes: null
+
+tacarla:
+  _target_: navsim.common.tacarla_dataloader.TaCarlaDataConfig
+  sampling_rate: 5  # 10Hz -> 2Hz
+  num_frames: ${scene_filter.num_frames}
+  num_history_frames: ${scene_filter.num_history_frames}
+  num_future_frames: ${scene_filter.num_future_frames}

@@ -2,9 +2,10 @@
 Bench2Drive scene representation for CARLA-native training.
 """
 
+from navsim.common.abstract_carla_scene import AbstractCarlaScene
 from navsim.common.dataclasses import AgentInput, EgoStatus
 from navsim.common.bench2drive_dataloader import (
-    Bench2DriveConfig,
+    Bench2DriveDataConfig,
     load_bench2drive_annotation,
     map_carla_command_to_discrete,
 )
@@ -12,6 +13,7 @@ from navsim.common.bev_semantic_utils import generate_simple_bev_semantic
 from navsim.common.bench2drive_constants import (
     B2D_CLASS_TO_NAVSIM,
     BEV_SEMANTIC_HEIGHT,
+    BEV_SEMANTIC_RANGE_M,
     BEV_SEMANTIC_WIDTH,
     BEV_SEMANTIC_RESOLUTION,
     NUM_FUTURE_WAYPOINTS,
@@ -56,7 +58,7 @@ class LiDAR:
 
 
 # TODO: should use coodinates system as ENUM
-class Bench2DriveScene:
+class Bench2DriveScene(AbstractCarlaScene):
     """
     Scene representation for Bench2Drive dataset.
     Implements CARLA-native loading without coordinate transformations.
@@ -65,7 +67,7 @@ class Bench2DriveScene:
     def __init__(
         self,
         scene_info: Dict,
-        config: Bench2DriveConfig,
+        config: Bench2DriveDataConfig,
         planner: Optional[any] = None,
         trajectory_sampling: Optional[any] = None,
     ):
@@ -555,7 +557,7 @@ class Bench2DriveScene:
         # Extract velocity (m/s)
         speed = anno["speed"]
         vx = speed * np.cos(theta_rad)
-        vy = -speed * np.sin(theta_rad)  # Negative for CARLA CW rotation
+        vy = speed * np.sin(theta_rad)  # CARLA left-handed: +Y right, CW heading positive
         ego_velocity = np.array([vx, vy], dtype=np.float32)
 
         # Extract acceleration (m/s²)
@@ -823,11 +825,12 @@ class Bench2DriveScene:
             ego_centric_x = ego_coords[0, 0]
             ego_centric_y = ego_coords[0, 1]
 
-            # Use annotation distance instead of manual calculation (comprehensive fix plan)
+            # Use annotation distance instead of manual calculation
             distance = obj["distance"]  # Pre-calculated distance to ego
-            # Key difference: B2D uses circular filtering (42.5m radius) vs NAVSIM's square region
-            if distance > BENCH2DRIVE_LIDAR_RANGE_M / 2:  # 42.5m from 85m diameter
-                continue  # This provides 360° coverage unlike NAVSIM's frontal-focused square
+            # Circular filtering at 32m radius (BENCH2DRIVE_LIDAR_RANGE_M/2 = 64/2 = 32m)
+            # Comparable to NAVSIM's 32m square region
+            if distance > BENCH2DRIVE_LIDAR_RANGE_M / 2:
+                continue
 
             # Extract rotation and convert to ego-centric using simpler angle subtraction
             rotation = obj["rotation"]  # Required field - fail fast if missing
@@ -917,6 +920,27 @@ class Bench2DriveScene:
             if cache_path.exists():
                 try:
                     cached_data = np.load(cache_path)
+
+                    # Validate cache metadata to reject stale caches from old spatial config
+                    if "resolution" in cached_data:
+                        cached_res = float(cached_data["resolution"])
+                        expected_res = BEV_SEMANTIC_RESOLUTION
+                        if abs(cached_res - expected_res) > 1e-3:
+                            raise ValueError(
+                                f"Stale BEV cache: resolution={cached_res:.4f} m/px "
+                                f"but current config expects {expected_res:.4f} m/px. "
+                                f"Regenerate caches with: python3 scripts/generate_bev_cache.py"
+                            )
+                    if "range_m" in cached_data:
+                        cached_range = float(cached_data["range_m"])
+                        expected_range = BEV_SEMANTIC_RANGE_M
+                        if abs(cached_range - expected_range) > 1e-3:
+                            raise ValueError(
+                                f"Stale BEV cache: range={cached_range:.1f}m "
+                                f"but current config expects {expected_range:.1f}m. "
+                                f"Regenerate caches with: python3 scripts/generate_bev_cache.py"
+                            )
+
                     # Use front_bev if available, otherwise use full_bev
                     if "front_bev" in cached_data:
                         map_bev = cached_data["front_bev"]
@@ -928,13 +952,12 @@ class Bench2DriveScene:
                     # Check generation type if available
                     if "generation_type" in cached_data:
                         cached_generation_type = str(cached_data["generation_type"])
-                        print(f"Loaded cached BEV ({cached_generation_type} mode) from {cache_path}")
                     else:
-                        # Assume vector mode for older caches without type marker
                         cached_generation_type = "vector"
-                        print(f"Loaded cached BEV (legacy vector mode) from {cache_path}")
+                except ValueError:
+                    raise  # Re-raise validation errors (stale cache detection)
                 except Exception as e:
-                    print(f"Failed to load cached BEV: {e}")
+                    raise RuntimeError(f"Failed to load cached BEV from {cache_path}: {e}") from e
             else:
                 # If BEV cache directory is provided but file doesn't exist, raise error
                 generation_hint = ""
