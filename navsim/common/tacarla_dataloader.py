@@ -64,6 +64,11 @@ class TaCarlaSceneLoader(AbstractCarlaSceneLoader):
                 # Route name from filename (strip .parquet)
                 route_name = pq_path.stem
 
+                # Check that extracted sensor data exists for this route
+                sensor_dir = Path(config.sensor_root) / route_name
+                if not sensor_dir.exists():
+                    continue
+
                 # Get frame count without loading full data
                 # Use pyarrow metadata for fast row count
                 try:

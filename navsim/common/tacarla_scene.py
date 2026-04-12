@@ -217,12 +217,15 @@ class TaCarlaScene(AbstractCarlaScene):
             lidar_path = self._get_sensor_path(row, "lidar")
             las = laspy.read(str(lidar_path))
             # Extract x, y, z, intensity
-            points = np.stack([
-                las.x.astype(np.float32),
-                las.y.astype(np.float32),
-                las.z.astype(np.float32),
-                getattr(las, 'intensity', np.zeros(len(las.x))).astype(np.float32),
-            ], axis=0)  # [4, N]
+            # laspy returns ScaledArrayView, must convert with np.array() first
+            x = np.array(las.x, dtype=np.float32)
+            y = np.array(las.y, dtype=np.float32)
+            z = np.array(las.z, dtype=np.float32)
+            try:
+                intensity = np.array(las.intensity, dtype=np.float32)
+            except Exception:
+                intensity = np.zeros(len(x), dtype=np.float32)
+            points = np.stack([x, y, z, intensity], axis=0)  # [4, N]
 
             # Pad to [6, N] to match NAVSIM format (ring_id=0, lidar_id=0)
             n_points = points.shape[1]
@@ -231,7 +234,10 @@ class TaCarlaScene(AbstractCarlaScene):
             return Lidar(lidar_pc=padded)
         except Exception as e:
             logger.warning(f"Cannot load LiDAR for frame {frame_10hz}: {e}")
-            return Lidar(lidar_pc=np.zeros((6, 1), dtype=np.float32))
+            # Return empty but valid point cloud (single point at origin)
+            # histogramdd needs at least shape [N, 2] where N >= 1
+            empty_pc = np.zeros((6, 10), dtype=np.float32)
+            return Lidar(lidar_pc=empty_pc)
 
     # ---- Future Trajectory ----
 
@@ -272,15 +278,19 @@ class TaCarlaScene(AbstractCarlaScene):
         future_poses_world = np.array(future_poses_world, dtype=np.float64)  # [8, 3]
 
         # Transform to ego-local coordinates
-        ego_pos = np.array([ego_x, ego_y])
-        positions = future_poses_world[:, :2]  # [8, 2]
+        # transform_points_to_ego expects Nx3 points and (3,) ego position
+        ego_pos = np.array([ego_x, ego_y, 0.0])
+        positions_3d = np.zeros((NUM_FUTURE_WAYPOINTS, 3), dtype=np.float64)
+        positions_3d[:, :2] = future_poses_world[:, :2]
         headings = future_poses_world[:, 2]  # [8]
 
         # Transform positions
-        local_positions = transform_points_to_ego(positions, ego_pos, ego_heading)
+        local_positions_3d = transform_points_to_ego(positions_3d, ego_pos, ego_heading)
 
         # Transform headings
         local_headings = transform_heading_to_ego(headings, ego_heading)
+
+        local_positions = local_positions_3d[:, :2]  # Take only x, y
 
         # Combine
         trajectory = np.zeros((NUM_FUTURE_WAYPOINTS, 3), dtype=np.float32)
@@ -304,7 +314,6 @@ class TaCarlaScene(AbstractCarlaScene):
         ego_x = float(m["x"])
         ego_y = float(m["y"])
         ego_heading = float(m["theta"])
-        ego_pos = np.array([ego_x, ego_y])
 
         # Parse new_boxes
         boxes = row["new_boxes"]
@@ -335,11 +344,12 @@ class TaCarlaScene(AbstractCarlaScene):
             if dist > AGENT_DISTANCE_THRESHOLD_M:
                 continue
 
-            # Transform to ego coordinates
-            agent_pos_world = world_loc[:2]
+            # Transform to ego coordinates (function expects Nx3 and (3,) ego)
+            agent_pos_3d = np.array([[world_loc[0], world_loc[1], 0.0]], dtype=np.float64)
+            ego_pos_3d = np.array([ego_x, ego_y, 0.0], dtype=np.float64)
             agent_pos_ego = transform_points_to_ego(
-                agent_pos_world.reshape(1, 2), ego_pos, ego_heading
-            )[0]
+                agent_pos_3d, ego_pos_3d, ego_heading
+            )[0, :2]
 
             # Get heading from vehicle_rotation (pitch, yaw, roll) in radians
             rotation = np.array(box.get("vehicle_rotation", [0, 0, 0]), dtype=np.float64)
