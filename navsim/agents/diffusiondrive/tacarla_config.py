@@ -20,14 +20,15 @@ class TaCarlaConfig(Bench2DriveConfig):
     plan_anchor_path: str = "/workspace/DiffusionDrive/download/kmeans_tacarla_traj_20.npy"
 
     # TaCarla trajectory normalization parameters
-    # Placeholder values — must be recomputed from actual TaCarla data
-    # using scripts/generate_b2d_plan_anchors.py (adapted for TaCarla cache)
-    tc_traj_norm_x_offset: float = 1.0
-    tc_traj_norm_x_scale: float = 60.0
-    tc_traj_norm_y_offset: float = 30.0
-    tc_traj_norm_y_scale: float = 60.0
-    tc_traj_norm_heading_offset: float = 2.0
-    tc_traj_norm_heading_scale: float = 4.0
+    # Computed from 387 samples (5 routes, Town12 subset)
+    # X: [0.0, 49.8], Y: [-16.1, 20.9], H: [-0.47, 1.53]
+    # TODO: Recompute from full dataset for final training
+    tc_traj_norm_x_offset: float = 0.0
+    tc_traj_norm_x_scale: float = 49.83267593383789
+    tc_traj_norm_y_offset: float = 16.11219024658203
+    tc_traj_norm_y_scale: float = 37.05120086669922
+    tc_traj_norm_heading_offset: float = 0.47342395782470703
+    tc_traj_norm_heading_scale: float = 2.0030734539031982
 
     def __post_init__(self):
         if self.dataset_type not in ("navsim", "bench2drive", "tacarla"):

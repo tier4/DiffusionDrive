@@ -1,0 +1,32 @@
+{
+  "num_samples_used": 387,
+  "num_clusters": 20,
+  "cache_path": "/mnt/nas/private_workspace/chenglin/dataset/TaCarla_cache_test",
+  "anchor_shape": [
+    20,
+    8,
+    2
+  ],
+  "normalization_params": {
+    "x_offset": 0.0,
+    "x_scale": 49.83267593383789,
+    "y_offset": 16.11219024658203,
+    "y_scale": 37.05120086669922,
+    "heading_offset": 0.47342395782470703,
+    "heading_scale": 2.0030734539031982,
+    "raw_ranges": {
+      "x_range": [
+        -0.0,
+        49.83267593383789
+      ],
+      "y_range": [
+        -16.11219024658203,
+        20.939010620117188
+      ],
+      "heading_range": [
+        -0.47342395782470703,
+        1.5296494960784912
+      ]
+    }
+  }
+}
