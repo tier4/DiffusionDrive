@@ -122,15 +122,18 @@ def worker_process_frame_ray(
         # Extract front half for NavSim compatibility
         front_bev = extract_front_half_bev(full_bev)
 
-        # Save with generation type marker
+        # Save with generation type marker and metadata for cache validation
+        from navsim.common.bench2drive_constants import BEV_SEMANTIC_RESOLUTION, BEV_SEMANTIC_RANGE_M
         np.savez_compressed(
             output_path,
-            full_bev=full_bev.astype(np.float32),
-            front_bev=front_bev.astype(np.float32),
+            full_bev=full_bev.astype(np.uint8),
+            front_bev=front_bev.astype(np.uint8),
             ego_points=ego_points,
             ego_heading_rad=ego_heading_rad,
             frame_idx=int(frame_number),
-            generation_type=generation_type,  # Mark the generation type
+            generation_type=generation_type,
+            resolution=np.float32(BEV_SEMANTIC_RESOLUTION),
+            range_m=np.float32(BEV_SEMANTIC_RANGE_M),
         )
         return True
     except Exception as e:
