@@ -15,7 +15,7 @@ COORDINATE SYSTEM:
 """
 
 from navsim.common.bench2drive_dataloader import (
-    Bench2DriveConfig,
+    Bench2DriveDataConfig,
     Bench2DriveSceneLoader,
 )
 from navsim.common.bench2drive_scene import Bench2DriveScene
@@ -285,8 +285,8 @@ def get_ego_state_from_raw_data(data_root: Path, scenario_name: str, frame_idx: 
     velocity_ms = ego_box['speed']
 
     # Get heading from rotation[2] (yaw in degrees)
-    # Negate to convert from CCW to CW (or vice versa) for correct visualization
-    heading_deg = -ego_box['rotation'][2]
+    # CARLA left-handed: heading is CW from +X, no negation needed
+    heading_deg = ego_box['rotation'][2]
     heading_rad = np.radians(heading_deg)
 
     # For vx/vy, calculate from speed and heading
@@ -1272,7 +1272,7 @@ def generate_single_video(
         else:
             num_frames = 30
 
-        config = Bench2DriveConfig(
+        config = Bench2DriveDataConfig(
             data_root=data_root,
             scenarios=video_scenarios,
             sampling_rate=5,  # 10Hz to 2Hz
@@ -1557,7 +1557,7 @@ def main():
             else:
                 num_frames = 30
 
-            config = Bench2DriveConfig(
+            config = Bench2DriveDataConfig(
                 data_root=data_root,
                 scenarios=video_scenarios,
                 sampling_rate=5,  # 10Hz to 2Hz
