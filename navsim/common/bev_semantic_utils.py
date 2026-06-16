@@ -11,6 +11,8 @@ import numpy as np
 import cv2
 from typing import Tuple
 
+from navsim.common.bench2drive_constants import BEV_SEMANTIC_RESOLUTION
+
 
 # TODO: to b2d constant
 # CARLA to BEV semantic class mapping
@@ -56,7 +58,7 @@ CARLA_TO_BEV_MAPPING = {
 
 
 def ego_to_bev_coordinates(
-    points_ego: np.ndarray, bev_height: int = 128, bev_width: int = 256, resolution: float = 0.25
+    points_ego: np.ndarray, bev_height: int = 128, bev_width: int = 256, resolution: float = BEV_SEMANTIC_RESOLUTION
 ) -> np.ndarray:
     """
     Convert ego-centric coordinates to BEV pixel coordinates.
@@ -161,7 +163,7 @@ def generate_agent_mask(
     agent_labels: np.ndarray,
     bev_height: int = 128,
     bev_width: int = 256,
-    resolution: float = 0.25,
+    resolution: float = BEV_SEMANTIC_RESOLUTION,
 ) -> np.ndarray:
     """
     Generate vehicle mask from detected agents.

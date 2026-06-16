@@ -12,7 +12,15 @@ class Bench2DriveConfig(TransfuserConfig):
     """Bench2Drive configuration with dataset-specific trajectory normalization."""
 
     # Dataset type flag
-    dataset_type: str = "navsim"  # "navsim" or "bench2drive"
+    dataset_type: str = "bench2drive"  # "navsim" or "bench2drive"
+
+    # Explicit spatial params matching 64m crop (same as parent TransfuserConfig,
+    # but stated explicitly to document that B2D data is cropped to this range)
+    lidar_min_x: float = -32.0
+    lidar_max_x: float = 32.0
+    lidar_min_y: float = -32.0
+    lidar_max_y: float = 32.0
+    pixels_per_meter: float = 4.0
 
     # Override default anchor paths with correct locations
     plan_anchor_path: str = "/workspace/DiffusionDrive/download/kmeans_navsim_traj_20.npy"
@@ -35,6 +43,13 @@ class Bench2DriveConfig(TransfuserConfig):
     b2d_traj_norm_y_scale: float = 64.60912817798321  # y_max - y_min
     b2d_traj_norm_heading_offset: float = 2.310837927351096  # -heading_min
     b2d_traj_norm_heading_scale: float = 4.6519694452598985  # heading_max - heading_min
+
+    def __post_init__(self):
+        if self.dataset_type not in ("navsim", "bench2drive"):
+            raise ValueError(
+                f"Invalid dataset_type: {self.dataset_type}. "
+                "Must be 'navsim' or 'bench2drive'."
+            )
 
     def get_normalization_params(self):
         """Get the appropriate normalization parameters based on dataset_type."""

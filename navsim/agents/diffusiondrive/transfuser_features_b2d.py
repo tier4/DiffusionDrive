@@ -5,10 +5,9 @@ Adapts Bench2Drive data to DiffusionDrive's expected format.
 Key Dimension Adaptations:
 =========================
 LiDAR Processing:
-- Bench2Drive provides 85m x 85m LiDAR coverage
-- DiffusionDrive expects 64m x 64m coverage
-- Solution: Process at full 85m (340x340), then resize to 64m (256x256)
-- Benefit: Preserves maximum information while maintaining compatibility
+- B2D LiDAR is cropped to 64m range to match DiffusionDrive model
+- Points beyond +-32m from ego are excluded by the histogram bins
+- Output is 256x256 at 0.25 m/pixel (same as NAVSIM)
 
 BEV Semantic Maps:
 - Dimensions: 128 x 256 (H x W) - native NavSim format
@@ -158,10 +157,16 @@ class Bench2DriveFeatureBuilder(AbstractFeatureBuilder):
             else:
                 front_camera_images.append(cam.image)
 
-        # Stitch images horizontally first (in numpy for efficiency)
-        # Original size: 900x1600 per camera -> 900x4800 total
+        # Crop cameras to match NAVSIM convention (transfuser_features.py:64-67):
+        # - Side cameras: [28:-28, 416:-416] crops 900x1600 -> 844x768
+        # - Front camera: [28:-28] crops 900x1600 -> 844x1600
+        # This ensures stitched image has similar FOV to what pretrained ResNet-34 expects
+        l0 = front_camera_images[0][28:-28, 416:-416]
+        f0 = front_camera_images[1][28:-28]
+        r0 = front_camera_images[2][28:-28, 416:-416]
+
         try:
-            stitched_image = np.concatenate(front_camera_images, axis=1)
+            stitched_image = np.concatenate([l0, f0, r0], axis=1)
         except Exception as e:
             print(f"Error concatenating images: {e}")
             # Return black image as fallback
@@ -194,9 +199,9 @@ class Bench2DriveFeatureBuilder(AbstractFeatureBuilder):
         """
         Process LiDAR data into BEV histogram using NavSim-compatible splat_points logic.
 
-        Note: Bench2Drive provides 85m x 85m LiDAR coverage, but DiffusionDrive
-        expects 64m x 64m. We first process the full 85m range to preserve
-        maximum information, then resize to 64m (256x256) for compatibility.
+        B2D LiDAR is cropped to 64m range to match DiffusionDrive model.
+        Points beyond +-32m are excluded by the histogram bins.
+        Output is 256x256 at 0.25 m/pixel.
 
         Args:
             lidars: List of LiDAR objects (we use the last/current one)
@@ -229,23 +234,9 @@ class Bench2DriveFeatureBuilder(AbstractFeatureBuilder):
             # Use histogramdd with (x, y) coordinate order - matches NavSim convention
             hist = np.histogramdd(point_cloud[:, :2], bins=(xbins, ybins))[0]
             
-            # CRITICAL: Coordinate system alignment for B2D integration
-            #
-            # DESIGN GOAL: Match NavSim pipeline structure while preserving CARLA coordinate system
-            #
-            # ISSUE: Raw B2D LiDAR data (from CARLA LAZ files) creates histogram with different
-            # orientation than what NavSim pipeline expects, causing misalignment between:
-            # - LiDAR histogram features
-            # - BEV semantic map features  
-            # - Agent state features
-            #
-            # SOLUTION: np.flipud() corrects histogram orientation to ensure all input features
-            # use consistent CARLA coordinate system (X=forward, Y=right, left-handed):
-            # - LiDAR histogram aligns with BEV semantic map
-            # - Agent positions match across all feature modalities
-            # - Model receives spatially consistent multi-modal inputs
-            #
-            # This maintains CARLA coordinates while ensuring compatibility with NavSim pipeline.
+            # B2D LiDAR after histogramdd: row 0 = min_x (behind ego), row N = max_x (ahead)
+            # NAVSIM convention: row 0 = max_x (ahead), row N = min_x (behind)
+            # flipud aligns B2D histogram to NAVSIM's "forward at top" convention
             hist = np.flipud(hist)
 
             # Apply clipping and normalization like NavSim
@@ -254,20 +245,8 @@ class Bench2DriveFeatureBuilder(AbstractFeatureBuilder):
 
             return overhead_splat
 
-        # Step 1: Process at Bench2Drive's native 85m x 85m resolution
-        # This preserves all the LiDAR information from the original data
-        hist_full = splat_points(lidar_pc, BENCH2DRIVE_LIDAR_RANGE_M, BENCH2DRIVE_LIDAR_SIZE)
-
-        # Step 2: Resize to DiffusionDrive's expected 64m x 64m (256x256)
-        # Using PIL for high-quality downsampling with LANCZOS filter
-        hist_image = Image.fromarray(hist_full)
-        hist_resized = hist_image.resize(
-            (DIFFUSIONDRIVE_LIDAR_SIZE, DIFFUSIONDRIVE_LIDAR_SIZE), Image.LANCZOS
-        )
-        hist = np.array(hist_resized, dtype=np.float32)
-
-        # Ensure non-negative values after resize (LANCZOS can produce small negative values)
-        hist = np.maximum(hist, 0.0)
+        # Process LiDAR at 64m range, producing 256x256 directly (no resize needed)
+        hist = splat_points(lidar_pc, BENCH2DRIVE_LIDAR_RANGE_M, BENCH2DRIVE_LIDAR_SIZE)
 
         # Convert to tensor and add channel dimension
         bev_tensor = torch.from_numpy(hist).unsqueeze(0)  # [1, H, W]
