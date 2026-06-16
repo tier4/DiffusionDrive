@@ -22,7 +22,7 @@ scene_filter:
 
 # Bench2Drive specific settings (minimal config for cache-only training)
 bench2drive:
-  _target_: navsim.common.bench2drive_dataloader.Bench2DriveConfig
+  _target_: navsim.common.bench2drive_dataloader.Bench2DriveDataConfig
   # data_root is not needed for cache-only training
   sampling_rate: 5 # Downsample from 10Hz to 2Hz
   num_frames: ${scene_filter.num_frames}

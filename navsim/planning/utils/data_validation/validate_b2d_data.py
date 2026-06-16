@@ -22,7 +22,7 @@ from navsim.agents.diffusiondrive.transfuser_features_b2d import (
     Bench2DriveFeatureBuilder,
     Bench2DriveTargetBuilder
 )
-from navsim.common.bench2drive_dataloader import Bench2DriveConfig, Bench2DriveSceneLoader
+from navsim.common.bench2drive_dataloader import Bench2DriveDataConfig, Bench2DriveSceneLoader
 from navsim.planning.training.bench2drive_dataset import Bench2DriveDataset
 from navsim.planning.training.dataset import CacheOnlyDataset
 
@@ -192,7 +192,7 @@ def main():
         )
     else:
         # Build full dataset
-        b2d_config = Bench2DriveConfig(
+        b2d_config = Bench2DriveDataConfig(
             data_root=Path(args.cache_path).parent / "data",  # Assuming standard structure
             scenarios=args.scenarios,
             bev_cache_dir=Path(args.cache_path).parent / "bev_cache"

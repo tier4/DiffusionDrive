@@ -3,7 +3,7 @@ import numpy as np
 import torch
 from unittest.mock import Mock, patch, MagicMock
 from navsim.common.bench2drive_scene import Bench2DriveScene
-from navsim.common.bench2drive_dataloader import Bench2DriveConfig
+from navsim.common.bench2drive_dataloader import Bench2DriveDataConfig
 from pathlib import Path
 
 

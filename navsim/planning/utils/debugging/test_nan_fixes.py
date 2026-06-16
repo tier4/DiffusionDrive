@@ -15,7 +15,7 @@ sys.path.append(str(project_root))
 
 from navsim.agents.diffusiondrive.transfuser_config import TransfuserConfig
 from navsim.agents.diffusiondrive.transfuser_agent import TransfuserAgent
-from navsim.common.bench2drive_dataloader import Bench2DriveConfig, Bench2DriveSceneLoader
+from navsim.common.bench2drive_dataloader import Bench2DriveDataConfig, Bench2DriveSceneLoader
 from navsim.planning.training.bench2drive_dataset import Bench2DriveDataset
 from torch.utils.data import DataLoader
 

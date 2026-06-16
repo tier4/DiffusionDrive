@@ -4,7 +4,7 @@ import json
 import numpy as np
 from pathlib import Path
 from navsim.common.bench2drive_scene import Bench2DriveScene
-from navsim.common.bench2drive_dataloader import Bench2DriveConfig
+from navsim.common.bench2drive_dataloader import Bench2DriveDataConfig
 
 
 def test_heading_fix_with_real_data():
@@ -21,8 +21,8 @@ def test_heading_fix_with_real_data():
     scene_name = scene_dirs[0].name
     print(f"Testing with scene: {scene_name}")
 
-    # Create config - using actual Bench2DriveConfig structure
-    config = Bench2DriveConfig(
+    # Create config - using actual Bench2DriveDataConfig structure
+    config = Bench2DriveDataConfig(
         data_root=data_folder,
         scenarios=[scene_name],
         sampling_rate=1,  # Don't downsample for testing

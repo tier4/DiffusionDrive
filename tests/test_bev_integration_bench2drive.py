@@ -12,7 +12,7 @@ import sys
 # Add project root to path
 sys.path.append(str(Path(__file__).parent.parent))
 
-from navsim.common.bench2drive_dataloader import Bench2DriveConfig, Bench2DriveSceneLoader
+from navsim.common.bench2drive_dataloader import Bench2DriveDataConfig, Bench2DriveSceneLoader
 from navsim.common.bench2drive_scene import Bench2DriveScene
 
 
@@ -22,7 +22,7 @@ class TestBench2DriveBEVIntegration:
     @pytest.fixture
     def scene_loader(self):
         """Create a scene loader with mini dataset."""
-        config = Bench2DriveConfig(
+        config = Bench2DriveDataConfig(
             data_root=Path("/workspace/Bench2Drive-mini"),
             scenarios=["ConstructionObstacle_Town05_Route68_Weather8"],
             sampling_rate=5,

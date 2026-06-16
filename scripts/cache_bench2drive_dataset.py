@@ -9,7 +9,7 @@ from navsim.agents.diffusiondrive.transfuser_features_b2d import (
     Bench2DriveFeatureBuilder,
     Bench2DriveTargetBuilder,
 )
-from navsim.common.bench2drive_dataloader import Bench2DriveConfig, Bench2DriveSceneLoader
+from navsim.common.bench2drive_dataloader import Bench2DriveDataConfig, Bench2DriveSceneLoader
 from navsim.common.cache_filtering import should_filter_sample
 from navsim.planning.training.dataset import dump_feature_target_to_pickle
 
@@ -43,7 +43,7 @@ def load_bench2drive_config() -> DictConfig:
 class SceneProcessor:
     """Ray actor for processing scenes in parallel."""
 
-    def __init__(self, config: Bench2DriveConfig, model_config: TransfuserConfig):
+    def __init__(self, config: Bench2DriveDataConfig, model_config: TransfuserConfig):
         """Initialize the processor with configurations."""
         # Create scene loader
         self.scene_loader = Bench2DriveSceneLoader(config)
@@ -175,7 +175,7 @@ def cache_bench2drive_dataset(
         logger.info(f"  num_history_frames: {bench2drive_config.num_history_frames}")
         logger.info(f"  num_future_frames: {bench2drive_config.num_future_frames}")
         
-        config = Bench2DriveConfig(
+        config = Bench2DriveDataConfig(
             data_root=data_root,
             scenarios=scenarios,
             sampling_rate=bench2drive_config.sampling_rate,
@@ -192,7 +192,7 @@ def cache_bench2drive_dataset(
     else:
         # Fallback to hardcoded values (legacy behavior)
         logger.warning("Using hardcoded configuration values (legacy mode)")
-        config = Bench2DriveConfig(
+        config = Bench2DriveDataConfig(
             data_root=data_root,
             scenarios=scenarios,
             sampling_rate=5,  # 10Hz -> 2Hz (each frame is 0.5s)

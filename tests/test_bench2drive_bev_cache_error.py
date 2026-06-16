@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from navsim.common.bench2drive_dataloader import Bench2DriveConfig, Bench2DriveSceneLoader
+from navsim.common.bench2drive_dataloader import Bench2DriveDataConfig, Bench2DriveSceneLoader
 
 # Test data directory - contains real sample data from DynamicObjectCrossing_Town02_Route13_Weather6
 TEST_DATA_DIR = Path(__file__).parent / "test_data" / "bench2drive_sample"
@@ -53,7 +53,7 @@ class TestBench2DriveBEVCacheError:
             bev_cache_dir = Path(temp_dir) / "empty_bev_cache"
             bev_cache_dir.mkdir(parents=True)
 
-            config = Bench2DriveConfig(
+            config = Bench2DriveDataConfig(
                 data_root=TEST_DATA_DIR,
                 scenarios=["DynamicObjectCrossing_Town02_Route13_Weather6"],
                 bev_cache_dir=bev_cache_dir,
@@ -114,7 +114,7 @@ class TestBench2DriveBEVCacheError:
 
     def test_scene_succeeds_with_valid_bev_cache(self):
         """Test that scene loads successfully with valid BEV cache."""
-        config = Bench2DriveConfig(
+        config = Bench2DriveDataConfig(
             data_root=TEST_DATA_DIR,
             scenarios=["DynamicObjectCrossing_Town02_Route13_Weather6"],
             bev_cache_dir=TEST_DATA_DIR / "sample_bev_cache",
@@ -138,7 +138,7 @@ class TestBench2DriveBEVCacheError:
 
     def test_no_bev_cache_generates_simple_bev(self):
         """Test that when no BEV cache dir is provided, simple BEV is generated."""
-        config = Bench2DriveConfig(
+        config = Bench2DriveDataConfig(
             data_root=TEST_DATA_DIR,
             scenarios=["DynamicObjectCrossing_Town02_Route13_Weather6"],
             # No bev_cache_dir specified

@@ -2,7 +2,7 @@ import pytest
 import numpy as np
 from unittest.mock import Mock, patch, MagicMock
 from navsim.common.bench2drive_scene import Bench2DriveScene
-from navsim.common.bench2drive_dataloader import Bench2DriveConfig
+from navsim.common.bench2drive_dataloader import Bench2DriveDataConfig
 
 
 class TestBench2DriveHeadingFix:
@@ -11,7 +11,7 @@ class TestBench2DriveHeadingFix:
     @pytest.fixture
     def mock_config(self):
         """Create a mock config."""
-        config = MagicMock(spec=Bench2DriveConfig)
+        config = MagicMock(spec=Bench2DriveDataConfig)
         config.data_folder = Path("/workspace/Bench2Drive-mini")
         config.scene_name = "test_scene"
         config.frame_index = 0

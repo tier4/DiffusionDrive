@@ -13,7 +13,7 @@ from navsim.agents.diffusiondrive.transfuser_features_b2d import (
     Bench2DriveFeatureBuilder,
     Bench2DriveTargetBuilder,
 )
-from navsim.common.bench2drive_dataloader import Bench2DriveConfig, Bench2DriveSceneLoader
+from navsim.common.bench2drive_dataloader import Bench2DriveDataConfig, Bench2DriveSceneLoader
 
 
 class TestBench2DriveCaching:

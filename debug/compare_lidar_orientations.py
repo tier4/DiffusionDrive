@@ -19,7 +19,7 @@ import laspy
 from navsim.agents.diffusiondrive.transfuser_config import TransfuserConfig
 from navsim.agents.diffusiondrive.transfuser_features import TransfuserFeatureBuilder
 from navsim.agents.diffusiondrive.transfuser_features_b2d import Bench2DriveFeatureBuilder
-from navsim.common.bench2drive_dataloader import Bench2DriveConfig, Bench2DriveSceneLoader
+from navsim.common.bench2drive_dataloader import Bench2DriveDataConfig, Bench2DriveSceneLoader
 from navsim.common.dataclasses import AgentInput, Lidar, EgoStatus
 from nuplan.database.utils.pointclouds.lidar import LidarPointCloud
 
@@ -38,7 +38,7 @@ class LidarComparer:
         """Load Bench2Drive LiDAR via feature builder processing."""
         scenario = "DynamicObjectCrossing_Town02_Route13_Weather6"
 
-        config = Bench2DriveConfig(
+        config = Bench2DriveDataConfig(
             data_root=self.bench2drive_root,
             scenarios=[scenario],
             sampling_rate=1,

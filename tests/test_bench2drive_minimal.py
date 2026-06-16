@@ -17,7 +17,7 @@ from navsim.agents.diffusiondrive.transfuser_features_b2d import (
     Bench2DriveTargetBuilder,
 )
 from navsim.common.bench2drive_dataloader import (
-    Bench2DriveConfig,
+    Bench2DriveDataConfig,
     Bench2DriveSceneLoader,
     map_carla_command_to_discrete,
 )
@@ -271,7 +271,7 @@ def test_command_mapping_comprehensive():
 
 def test_dimension_validation():
     """Test that BEV and LiDAR dimensions match DiffusionDrive expectations."""
-    config = Bench2DriveConfig(
+    config = Bench2DriveDataConfig(
         data_root=Path("/workspace/Bench2Drive-mini"),
         scenarios=["test_scenario"],
     )

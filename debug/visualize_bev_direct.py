@@ -10,7 +10,7 @@ from navsim.agents.diffusiondrive.transfuser_features_b2d import (
     Bench2DriveFeatureBuilder,
     Bench2DriveTargetBuilder,
 )
-from navsim.common.bench2drive_dataloader import Bench2DriveConfig, Bench2DriveSceneLoader
+from navsim.common.bench2drive_dataloader import Bench2DriveDataConfig, Bench2DriveSceneLoader
 
 import sys
 from pathlib import Path
@@ -701,7 +701,7 @@ def main():
         print(f"Using HD map: {map_file}")
 
         # Create Bench2Drive configuration
-        config = Bench2DriveConfig(
+        config = Bench2DriveDataConfig(
             data_root=data_root,
             scenarios=[scenario],
             sampling_rate=5,  # No downsampling for test data

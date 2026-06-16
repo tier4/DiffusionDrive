@@ -4,7 +4,7 @@ Shared pytest fixtures for tests.
 
 import pytest
 from pathlib import Path
-from navsim.common.bench2drive_dataloader import Bench2DriveConfig
+from navsim.common.bench2drive_dataloader import Bench2DriveDataConfig
 
 
 @pytest.fixture
@@ -16,7 +16,7 @@ def sample_data_dir():
 @pytest.fixture
 def sample_config(sample_data_dir):
     """Standard configuration using sample data."""
-    return Bench2DriveConfig(
+    return Bench2DriveDataConfig(
         data_root=sample_data_dir,
         scenarios=["DynamicObjectCrossing_Town02_Route13_Weather6"],
         sampling_rate=5,
@@ -32,7 +32,7 @@ def sample_config(sample_data_dir):
 @pytest.fixture
 def sample_config_with_bev_cache(sample_data_dir):
     """Configuration with BEV cache for specific tests."""
-    return Bench2DriveConfig(
+    return Bench2DriveDataConfig(
         data_root=sample_data_dir,
         scenarios=["DynamicObjectCrossing_Town02_Route13_Weather6"],
         sampling_rate=5,
