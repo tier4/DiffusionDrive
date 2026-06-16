@@ -4,93 +4,72 @@ This allows using different normalization for different datasets without modifyi
 """
 
 import torch
+import torch.nn as nn
 from navsim.agents.diffusiondrive.transfuser_model_v2 import V2TransfuserModel
 from navsim.agents.diffusiondrive.bench2drive_config import Bench2DriveConfig
 
 
 class V2TransfuserModelWrapper(V2TransfuserModel):
-    """Wrapper that adds trajectory normalization to V2TransfuserModel."""
+    """Wrapper that adds dataset-specific trajectory normalization to V2TransfuserModel.
+
+    Instead of monkey-patching norm_odo/denorm_odo, this registers normalization
+    parameters as buffers on the trajectory head. Buffers survive deepcopy, DDP,
+    EMA, and state_dict save/load.
+    """
 
     def __init__(self, config: Bench2DriveConfig):
         """Initialize with extended config."""
-        # Initialize parent with base config
         super().__init__(config)
-
-        # Store extended config
         self.extended_config = config
 
-        # Get normalization parameters
+        # Get normalization parameters and register as buffers on the trajectory head
         norm_params = config.get_normalization_params()
 
-        # Override the trajectory head's norm_odo and denorm_odo methods
-        # Store original methods for reference
-        self._trajectory_head._orig_norm_odo = self._trajectory_head.norm_odo
-        self._trajectory_head._orig_denorm_odo = self._trajectory_head.denorm_odo
+        head = self._trajectory_head
+        head.register_buffer("_norm_x_offset", torch.tensor(norm_params["x_offset"], dtype=torch.float32))
+        head.register_buffer("_norm_x_scale", torch.tensor(norm_params["x_scale"], dtype=torch.float32))
+        head.register_buffer("_norm_y_offset", torch.tensor(norm_params["y_offset"], dtype=torch.float32))
+        head.register_buffer("_norm_y_scale", torch.tensor(norm_params["y_scale"], dtype=torch.float32))
+        head.register_buffer("_norm_heading_offset", torch.tensor(norm_params["heading_offset"], dtype=torch.float32))
+        head.register_buffer("_norm_heading_scale", torch.tensor(norm_params["heading_scale"], dtype=torch.float32))
 
-        # Create new normalization methods using config parameters
-        def norm_odo_override(odo_info_fut):
-            """Override norm_odo with config-based normalization."""
-            odo_info_fut_x = odo_info_fut[..., 0:1]
-            odo_info_fut_y = odo_info_fut[..., 1:2]
-            odo_info_fut_head = (
-                odo_info_fut[..., 2:3]
-                if odo_info_fut.shape[-1] > 2
-                else torch.zeros_like(odo_info_fut_x)
-            )
+        # Override norm_odo and denorm_odo with buffer-based versions
+        # We bind these as proper methods so they move with the module
+        import types
+        head.norm_odo = types.MethodType(_norm_odo, head)
+        head.denorm_odo = types.MethodType(_denorm_odo, head)
 
-            # Normalize using config parameters
-            odo_info_fut_x = (
-                2 * (odo_info_fut_x + norm_params["x_offset"]) / norm_params["x_scale"] - 1
-            )
-            odo_info_fut_y = (
-                2 * (odo_info_fut_y + norm_params["y_offset"]) / norm_params["y_scale"] - 1
-            )
-            odo_info_fut_head = (
-                2
-                * (odo_info_fut_head + norm_params["heading_offset"])
-                / norm_params["heading_scale"]
-                - 1
-            )
 
-            # Clamp to ensure values are in [-1, 1]
-            odo_info_fut_x = torch.clamp(odo_info_fut_x, min=-1.0, max=1.0)
-            odo_info_fut_y = torch.clamp(odo_info_fut_y, min=-1.0, max=1.0)
-            odo_info_fut_head = torch.clamp(odo_info_fut_head, min=-1.0, max=1.0)
+def _norm_odo(self, odo_info_fut):
+    """Normalize trajectory using registered buffers."""
+    x = odo_info_fut[..., 0:1]
+    y = odo_info_fut[..., 1:2]
+    head = odo_info_fut[..., 2:3] if odo_info_fut.shape[-1] > 2 else torch.zeros_like(x)
 
-            if odo_info_fut.shape[-1] > 2:
-                return torch.cat([odo_info_fut_x, odo_info_fut_y, odo_info_fut_head], dim=-1)
-            else:
-                return torch.cat([odo_info_fut_x, odo_info_fut_y], dim=-1)
+    # No clamping here -- matches original norm_odo behavior in transfuser_model_v2.py
+    # Clamping would zero gradients for extreme maneuvers in B2D training data
+    x = 2 * (x + self._norm_x_offset) / self._norm_x_scale - 1
+    y = 2 * (y + self._norm_y_offset) / self._norm_y_scale - 1
+    head = 2 * (head + self._norm_heading_offset) / self._norm_heading_scale - 1
 
-        def denorm_odo_override(odo_info_fut):
-            """Override denorm_odo with config-based denormalization."""
-            odo_info_fut_x = odo_info_fut[..., 0:1]
-            odo_info_fut_y = odo_info_fut[..., 1:2]
-            odo_info_fut_head = (
-                odo_info_fut[..., 2:3]
-                if odo_info_fut.shape[-1] > 2
-                else torch.zeros_like(odo_info_fut_x)
-            )
+    if odo_info_fut.shape[-1] > 2:
+        return torch.cat([x, y, head], dim=-1)
+    return torch.cat([x, y], dim=-1)
 
-            # Denormalize using config parameters
-            odo_info_fut_x = (odo_info_fut_x + 1) / 2 * norm_params["x_scale"] - norm_params[
-                "x_offset"
-            ]
-            odo_info_fut_y = (odo_info_fut_y + 1) / 2 * norm_params["y_scale"] - norm_params[
-                "y_offset"
-            ]
-            odo_info_fut_head = (odo_info_fut_head + 1) / 2 * norm_params[
-                "heading_scale"
-            ] - norm_params["heading_offset"]
 
-            if odo_info_fut.shape[-1] > 2:
-                return torch.cat([odo_info_fut_x, odo_info_fut_y, odo_info_fut_head], dim=-1)
-            else:
-                return torch.cat([odo_info_fut_x, odo_info_fut_y], dim=-1)
+def _denorm_odo(self, odo_info_fut):
+    """Denormalize trajectory using registered buffers."""
+    x = odo_info_fut[..., 0:1]
+    y = odo_info_fut[..., 1:2]
+    head = odo_info_fut[..., 2:3] if odo_info_fut.shape[-1] > 2 else torch.zeros_like(x)
 
-        # Replace the methods
-        self._trajectory_head.norm_odo = norm_odo_override
-        self._trajectory_head.denorm_odo = denorm_odo_override
+    x = (x + 1) / 2 * self._norm_x_scale - self._norm_x_offset
+    y = (y + 1) / 2 * self._norm_y_scale - self._norm_y_offset
+    head = (head + 1) / 2 * self._norm_heading_scale - self._norm_heading_offset
+
+    if odo_info_fut.shape[-1] > 2:
+        return torch.cat([x, y, head], dim=-1)
+    return torch.cat([x, y], dim=-1)
 
 
 def create_diffusiondrive_model(config: Bench2DriveConfig) -> V2TransfuserModelWrapper:
