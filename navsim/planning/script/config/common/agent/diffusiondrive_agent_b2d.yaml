@@ -18,9 +18,9 @@ config:
   # Configuration for Bench2Drive
   dataset_type: "bench2drive"  # Important: set to bench2drive for proper normalization
   
-  # Paths for Bench2Drive
-  bkb_path: "/workspace/DiffusionDrive/download/pytorch_model.bin"
-  plan_anchor_path: "/workspace/DiffusionDrive/download/kmeans_b2d_v2_traj_20.npy"
+  # Paths for Bench2Drive (accessible inside Docker via -v /mnt:/mnt)
+  bkb_path: "/mnt/nvme1/diffusiondrive/weights/resnet34_a1_in1k.bin"
+  plan_anchor_path: "/mnt/nvme1/diffusiondrive/weights/kmeans_b2d_v2_traj_20.npy"
 
 checkpoint_path: null
 lr: 5e-5

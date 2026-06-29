@@ -289,6 +289,81 @@ Training automatically logs timing metrics:
 | Normalization | Hardcoded NavSim values | B2D-specific values |
 | Path Overrides | Not available | `--cache-path`, `--anchor-path` |
 
+## Docker Training (Blackwell GPU)
+
+On machines with NVIDIA Blackwell GPUs (sm_120, e.g. RTX PRO 6000), the base Docker image's PyTorch lacks sm_120 support. Use the `diffusiondrive:blackwell` image and `PYTHONPATH` instead of `pip install -e .` (which downgrades torch via `requirements.txt`).
+
+### Build the Blackwell image (one-time)
+
+```bash
+cat > /tmp/Dockerfile.blackwell << 'EOF'
+FROM diffusiondrive:latest
+USER user
+RUN pip install --no-cache-dir --upgrade --pre torch torchvision --index-url https://download.pytorch.org/whl/nightly/cu128
+EOF
+docker build -f /tmp/Dockerfile.blackwell -t diffusiondrive:blackwell .
+```
+
+### Training
+
+```bash
+docker run -d --rm --memory=12g --cpus=8 --gpus=1 --shm-size=4g \
+  --name b2d_training \
+  -e PYTHONPATH=/workspace/DiffusionDrive \
+  -v /path/to/workspace:/workspace \
+  -v /mnt:/mnt \
+  -w /workspace/DiffusionDrive/navsim/planning/script \
+  --entrypoint "" \
+  diffusiondrive:blackwell \
+  python3 run_bench2drive_training.py \
+    agent=diffusiondrive_agent_b2d \
+    train_test_split=bench2drive \
+    cache_path=/path/to/dataset_cache \
+    use_cache_without_dataset=True \
+    force_cache_computation=False \
+    trainer.params.max_epochs=1000 \
+    trainer.params.strategy=auto \
+    trainer.params.accelerator=gpu \
+    trainer.params.precision=16-mixed \
+    +trainer.params.devices=1 \
+    dataloader.params.batch_size=128 \
+    dataloader.params.num_workers=4 \
+    output_dir=/path/to/training_output/<EXPERIMENT_NAME>
+```
+
+**Common Hydra overrides:**
+
+| Override | Description | Example |
+|----------|-------------|---------|
+| `agent.config.trajectory_weight` | Trajectory loss weight | `0.1` |
+| `agent.config.trajectory_cls_weight` | Mode classification weight | `0.5` |
+| `agent.config.trajectory_reg_weight` | Trajectory regression weight | `0.1` |
+| `agent.config.bev_semantic_weight` | BEV semantic loss weight | `32.0` |
+| `agent.checkpoint_path` | Resume from checkpoint | `/path/to/checkpoint.ckpt` |
+| `agent.lr` | Learning rate | `1e-4` |
+
+### BEV cache for large towns
+
+Town11/12/13 maps (1.4-1.8GB compressed) expand to 20GB+ during KDTree construction. Process one town at a time with swap enabled:
+
+```bash
+docker run --rm --memory=24g --memory-swap=-1 --cpus=8 --shm-size=4g \
+  -v /path/to/workspace:/workspace \
+  -v /mnt:/mnt \
+  -w /workspace/DiffusionDrive \
+  --entrypoint "" \
+  diffusiondrive:latest \
+  bash -c "pip install -e . --quiet && python3 scripts/generate_bev_cache.py \
+    --data-root /path/to/Bench2Drive-Base \
+    --map-dir /path/to/Bench2Drive-Map \
+    --output-dir /path/to/bev_cache_seg \
+    --generation-type segmentation \
+    --scenarios SCENARIO_1 SCENARIO_2 ... \
+    --workers 2"
+```
+
+---
+
 ## Note on Environment Variable Naming
 
 The environment variables use `NAVSIM_*` naming (e.g., `NAVSIM_DEVKIT_ROOT`, `NAVSIM_EXP_ROOT`) for historical reasons. This can be confusing since we're training on Bench2Drive, not NavSim data.
