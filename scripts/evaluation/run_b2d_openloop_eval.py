@@ -92,10 +92,14 @@ class B2DEvalDataset(Dataset):
             agent_input = scene.get_agent_input(-1)
             features = self.feature_builder.compute_features(agent_input)
 
+        agent_states, agent_labels, _ = scene.get_agents(-1)
+
         return {
             "features": features,
             "gt_trajectory": gt,
             "scenario_name": info["scenario_name"],
+            "agent_states": np.array(agent_states, dtype=np.float32),
+            "agent_labels": np.array(agent_labels, dtype=np.float32),
         }
 
 
@@ -114,10 +118,19 @@ def eval_collate_fn(batch: List[Dict]) -> Dict:
         [torch.from_numpy(item["gt_trajectory"]) for item in batch]
     )
 
+    agent_states = torch.stack(
+        [torch.from_numpy(item["agent_states"]) for item in batch]
+    )
+    agent_labels = torch.stack(
+        [torch.from_numpy(item["agent_labels"]) for item in batch]
+    )
+
     return {
         "features": batched_features,
         "gt_trajectories": gt_trajectories,
         "scenario_names": [item["scenario_name"] for item in batch],
+        "agent_states": agent_states,
+        "agent_labels": agent_labels,
     }
 
 
@@ -196,10 +209,15 @@ def evaluate(
                 outputs = model(features)
                 pred_trajs = outputs["trajectory"].cpu().numpy()
 
+            agent_states_batch = batch["agent_states"]
+            agent_labels_batch = batch["agent_labels"]
+
             for i in range(len(names)):
                 m = metrics_calc.compute_metrics(
                     pred_trajectory=pred_trajs[i],
                     gt_trajectory=gt_trajs[i].numpy(),
+                    gt_agent_states=agent_states_batch[i].numpy(),
+                    gt_agent_labels=agent_labels_batch[i].numpy().astype(bool),
                 )
                 per_scenario[names[i]].append(m)
 
