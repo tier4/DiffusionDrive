@@ -5,7 +5,7 @@ import pytest
 
 
 def test_compute_metrics_with_agents_returns_collision():
-    """compute_metrics should return collision dict when given agent states."""
+    """compute_metrics should return per-horizon and average collision rates."""
     from navsim.evaluate.b2d_metrics import B2DOpenLoopMetrics
 
     metrics = B2DOpenLoopMetrics(num_timesteps=8, timestep_sec=0.5)
@@ -25,8 +25,17 @@ def test_compute_metrics_with_agents_returns_collision():
     )
 
     assert "collision" in result
-    assert "obj_col_avg" in result["collision"]
-    assert "obj_box_col_avg" in result["collision"]
+    col = result["collision"]
+    # Per-horizon cumulative collision (VAD format)
+    assert "col_1.0s" in col
+    assert "col_2.0s" in col
+    assert "col_3.0s" in col
+    assert "box_col_1.0s" in col
+    assert "box_col_2.0s" in col
+    assert "box_col_3.0s" in col
+    # Overall averages
+    assert "col_avg" in col
+    assert "box_col_avg" in col
 
 
 def test_compute_metrics_without_agents_returns_empty_collision():
@@ -60,5 +69,6 @@ def test_aggregate_preserves_collision_metrics():
     m2 = metrics.compute_metrics(gt.copy(), gt, agent_states, agent_labels)
 
     agg = metrics.aggregate_metrics([m1, m2])
-    assert "obj_col_avg" in agg["collision"]
-    assert "obj_box_col_avg" in agg["collision"]
+    assert "col_avg" in agg["collision"]
+    assert "box_col_avg" in agg["collision"]
+    assert "col_1.0s" in agg["collision"]

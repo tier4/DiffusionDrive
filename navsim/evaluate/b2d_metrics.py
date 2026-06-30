@@ -113,8 +113,13 @@ class B2DOpenLoopMetrics:
         gt_agent_labels: np.ndarray,
         T: int,
     ) -> Dict[str, float]:
-        """Compute collision rates using PlanningMetric."""
+        """Compute collision rates using PlanningMetric.
+
+        Reports per-horizon cumulative collision rates matching VAD format:
+        "did any collision happen from step 0 up to step t?"
+        """
         from navsim.evaluate.b2d_planning_utils import PlanningMetric
+        import torch
 
         pm = PlanningMetric()
 
@@ -123,18 +128,30 @@ class B2DOpenLoopMetrics:
             gt_agent_labels = gt_agent_labels[np.newaxis, ...]
 
         seg, ped = pm.get_label(gt_agent_states, gt_agent_labels, num_timesteps=T)
-        import torch
         occupancy = torch.logical_or(seg, ped)
 
         pred_batch = pred_traj[np.newaxis, ...]  # [1, T, 3]
         gt_batch = gt_traj[np.newaxis, ...]
 
         obj_coll, obj_box_coll = pm.evaluate_coll(pred_batch, gt_batch, occupancy)
+        # obj_coll, obj_box_coll: [1, T] boolean per-timestep collision flags
 
-        return {
-            "obj_col_avg": float(obj_coll.float().mean()),
-            "obj_box_col_avg": float(obj_box_coll.float().mean()),
-        }
+        result = {}
+
+        # Per-horizon cumulative collision (VAD format):
+        # At horizon t, report whether ANY collision occurred in steps [0, t]
+        for t in range(T):
+            horizon_sec = (t + 1) * self.timestep_sec
+            label = f"{horizon_sec:.1f}s"
+            # Cumulative: any collision from step 0 to step t
+            result[f"col_{label}"] = float(obj_coll[0, : t + 1].any().float())
+            result[f"box_col_{label}"] = float(obj_box_coll[0, : t + 1].any().float())
+
+        # Overall averages (across all horizons)
+        result["col_avg"] = float(obj_coll.float().mean())
+        result["box_col_avg"] = float(obj_box_coll.float().mean())
+
+        return result
 
     def aggregate_metrics(self, all_sample_metrics: List[Dict]) -> Dict:
         """
