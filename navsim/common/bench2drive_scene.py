@@ -4,7 +4,7 @@ Bench2Drive scene representation for CARLA-native training.
 
 from navsim.common.dataclasses import AgentInput, EgoStatus
 from navsim.common.bench2drive_dataloader import (
-    Bench2DriveConfig,
+    Bench2DriveDataConfig,
     load_bench2drive_annotation,
     map_carla_command_to_discrete,
 )
@@ -65,7 +65,7 @@ class Bench2DriveScene:
     def __init__(
         self,
         scene_info: Dict,
-        config: Bench2DriveConfig,
+        config: Bench2DriveDataConfig,
         planner: Optional[any] = None,
         trajectory_sampling: Optional[any] = None,
     ):

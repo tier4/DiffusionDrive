@@ -233,11 +233,10 @@ class Bench2DriveFeatureBuilder(AbstractFeatureBuilder):
 
             # Use histogramdd with (x, y) coordinate order - matches NavSim convention
             hist = np.histogramdd(point_cloud[:, :2], bins=(xbins, ybins))[0]
-            
-            # B2D LiDAR after histogramdd: row 0 = min_x (behind ego), row N = max_x (ahead)
-            # NAVSIM convention: row 0 = max_x (ahead), row N = min_x (behind)
-            # flipud aligns B2D histogram to NAVSIM's "forward at top" convention
-            hist = np.flipud(hist)
+
+            # No flipud — NAVSIM's splat_points does not flip either.
+            # Row 0 = min_x (behind ego), which is what the pretrained backbone
+            # and GridSampleCrossBEVAttention expect.
 
             # Apply clipping and normalization like NavSim
             hist[hist > self.config.hist_max_per_pixel] = self.config.hist_max_per_pixel

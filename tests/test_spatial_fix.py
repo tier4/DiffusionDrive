@@ -254,8 +254,8 @@ class TestBEVOrientation:
         assert abs(row - 127) < 1, f"Ego row={row}, expected ~127"
         assert abs(col - 128) < 1, f"Ego col={col}, expected ~128"
 
-    def test_bev_orientation_after_flipud(self):
-        """LiDAR histogram flipud: forward points should be at low row indices."""
+    def test_bev_orientation_matches_navsim(self):
+        """LiDAR histogram WITHOUT flipud: forward points at HIGH row indices (matching NAVSIM)."""
         from navsim.common.bench2drive_constants import BENCH2DRIVE_LIDAR_RANGE_M, BENCH2DRIVE_LIDAR_SIZE
 
         # Create a point cloud with one point 10m ahead
@@ -264,13 +264,13 @@ class TestBEVOrientation:
         xbins = np.linspace(-BENCH2DRIVE_LIDAR_RANGE_M / 2, BENCH2DRIVE_LIDAR_RANGE_M / 2, BENCH2DRIVE_LIDAR_SIZE + 1)
         ybins = np.linspace(-BENCH2DRIVE_LIDAR_RANGE_M / 2, BENCH2DRIVE_LIDAR_RANGE_M / 2, BENCH2DRIVE_LIDAR_SIZE + 1)
         hist = np.histogramdd(points[:, :2], bins=(xbins, ybins))[0]
-        hist_flipped = np.flipud(hist)
 
-        # After flipud, forward (positive x) should be at low row indices (top of image)
-        nonzero_rows = np.where(hist_flipped.sum(axis=1) > 0)[0]
-        assert len(nonzero_rows) > 0, "No nonzero rows after flipud"
-        assert nonzero_rows[0] < BENCH2DRIVE_LIDAR_SIZE / 2, (
-            f"Forward point at row {nonzero_rows[0]}, expected < {BENCH2DRIVE_LIDAR_SIZE / 2}"
+        # No flipud — matches NAVSIM convention.
+        # Row 0 = min_x (behind ego), so forward point (x=10) is at high row index.
+        nonzero_rows = np.where(hist.sum(axis=1) > 0)[0]
+        assert len(nonzero_rows) > 0, "No nonzero rows in histogram"
+        assert nonzero_rows[0] > BENCH2DRIVE_LIDAR_SIZE / 2, (
+            f"Forward point at row {nonzero_rows[0]}, expected > {BENCH2DRIVE_LIDAR_SIZE / 2} (NAVSIM convention)"
         )
 
 
