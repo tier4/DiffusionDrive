@@ -3,6 +3,7 @@ Planning metric utilities for collision detection.
 Ported from VAD's metric_stp3.py via reference/Bench2DriveZoo.
 """
 
+import cv2
 import numpy as np
 import torch
 from typing import Tuple
@@ -124,6 +125,21 @@ class PlanningMetric:
         pixels[:, 0] = (points[:, 0] - self.bev_start_position[0]) / self.bev_resolution[0]
         pixels[:, 1] = (points[:, 1] - self.bev_start_position[1]) / self.bev_resolution[1]
         return np.round(pixels).astype(np.int32)
+
+    def _rasterize_polygon(self, pixel_corners, height, width):
+        """Fill a polygon on a (height, width) canvas.
+
+        Args:
+            pixel_corners: [4, 2] integer corners as (row, col).
+
+        Returns:
+            (rr, cc): int32 arrays of filled pixel indices, clipped to canvas.
+        """
+        canvas = np.zeros((height, width), dtype=np.uint8)
+        # cv2 points are (x=col, y=row)
+        cv2.fillPoly(canvas, [pixel_corners[:, [1, 0]].astype(np.int32)], 1)
+        rr, cc = np.nonzero(canvas)
+        return rr.astype(np.int32), cc.astype(np.int32)
 
     def get_label(
         self,

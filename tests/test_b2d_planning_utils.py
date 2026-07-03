@@ -55,3 +55,29 @@ def test_polygon_rasterization():
     # All points should be within the polygon bounds
     assert np.all(rr >= 2) and np.all(rr <= 5)
     assert np.all(cc >= 2) and np.all(cc <= 5)
+
+
+def test_rasterize_polygon_fills_box():
+    from navsim.evaluate.b2d_planning_utils import PlanningMetric
+
+    pm = PlanningMetric()
+    # axis-aligned box in pixel space: rows 10..20, cols 30..40 (corners as (row, col))
+    corners = np.array([[10, 30], [10, 40], [20, 40], [20, 30]], dtype=np.int32)
+    rr, cc = pm._rasterize_polygon(corners, 200, 200)
+
+    filled = set(zip(rr.tolist(), cc.tolist()))
+    assert (15, 35) in filled          # interior
+    assert (10, 30) in filled          # corner (cv2 includes boundary)
+    assert rr.min() >= 10 and rr.max() <= 20
+    assert cc.min() >= 30 and cc.max() <= 40
+
+
+def test_rasterize_polygon_clips_out_of_bounds():
+    from navsim.evaluate.b2d_planning_utils import PlanningMetric
+
+    pm = PlanningMetric()
+    # box partially outside the canvas must be clipped, not wrapped or crashed
+    corners = np.array([[-5, -5], [-5, 5], [5, 5], [5, -5]], dtype=np.int32)
+    rr, cc = pm._rasterize_polygon(corners, 200, 200)
+    assert len(rr) > 0
+    assert rr.min() >= 0 and cc.min() >= 0
