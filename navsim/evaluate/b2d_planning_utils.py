@@ -148,19 +148,39 @@ class PlanningMetric:
         num_timesteps: int = 6,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
-        Generate BEV occupancy grids from agent states.
+        Generate per-timestep BEV occupancy grids from agent states.
+
+        Matches STP3/VAD get_birds_eye_view_label: agents are rasterized at
+        their position AT each timestep (metric_stp3.py:118-133), never
+        frozen at t=0.
 
         Args:
-            gt_agent_states: [B, N, 5] array of (x, y, heading, length, width).
-            gt_agent_labels: [B, N] boolean validity mask.
-            num_timesteps: Number of future timesteps.
+            gt_agent_states: [B, T, N, 5] or [T, N, 5] of
+                (x, y, heading, length, width) in the current ego frame.
+            gt_agent_labels: [B, T, N] or [T, N] boolean validity mask.
+            num_timesteps: Number of future timesteps T to rasterize.
 
         Returns:
-            (segmentation, pedestrian) each [B, T, H, W].
+            (segmentation, pedestrian) each [B, T, H, W]. The pedestrian
+            tensor is always zeros (walkers are merged into segmentation
+            upstream); it is kept for VAD API compatibility only.
         """
-        if gt_agent_states.ndim == 2:
+        gt_agent_states = np.asarray(gt_agent_states)
+        gt_agent_labels = np.asarray(gt_agent_labels)
+        if gt_agent_states.ndim == 3:
             gt_agent_states = gt_agent_states[np.newaxis, ...]
             gt_agent_labels = gt_agent_labels[np.newaxis, ...]
+        if gt_agent_states.ndim != 4:
+            raise ValueError(
+                "gt_agent_states must be per-timestep [B, T, N, 5] or [T, N, 5]; "
+                f"got shape {gt_agent_states.shape}. Static [N, 5] states would "
+                "freeze agents at t=0 and invalidate the collision metric."
+            )
+        if gt_agent_states.shape[1] < num_timesteps:
+            raise ValueError(
+                f"Need agent states for {num_timesteps} timesteps, "
+                f"got {gt_agent_states.shape[1]}"
+            )
 
         B = gt_agent_states.shape[0]
         T = num_timesteps
@@ -171,20 +191,15 @@ class PlanningMetric:
         pedestrian = torch.zeros((B, T, H, W))
 
         for b in range(B):
-            for agent_idx in range(gt_agent_states.shape[1]):
-                if not gt_agent_labels[b, agent_idx]:
-                    continue
-                x, y, heading, length, width = gt_agent_states[b, agent_idx]
-                corners = self._get_agent_corners(x, y, heading, length, width)
-                pixel_corners = self._world_to_pixel(corners)
-
-                rr, cc = polygon_simple(
-                    pixel_corners[:, 0], pixel_corners[:, 1], shape=(H, W)
-                )
-                valid = (rr >= 0) & (rr < H) & (cc >= 0) & (cc < W)
-                rr, cc = rr[valid], cc[valid]
-                if len(rr) > 0:
-                    for t in range(T):
+            for t in range(T):
+                for agent_idx in range(gt_agent_states.shape[2]):
+                    if not gt_agent_labels[b, t, agent_idx]:
+                        continue
+                    x, y, heading, length, width = gt_agent_states[b, t, agent_idx]
+                    corners = self._get_agent_corners(x, y, heading, length, width)
+                    pixel_corners = self._world_to_pixel(corners)
+                    rr, cc = self._rasterize_polygon(pixel_corners, H, W)
+                    if len(rr) > 0:
                         segmentation[b, t, rr, cc] = 1
 
         return segmentation, pedestrian
