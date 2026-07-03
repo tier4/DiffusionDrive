@@ -44,6 +44,7 @@ class B2DEvalDataset(Dataset):
         scenario_paths: List[str],
         feature_builder: Bench2DriveFeatureBuilder,
         use_gt: bool = False,
+        token_stride: int = 1,
     ):
         self.feature_builder = feature_builder
         self.use_gt = use_gt
@@ -61,6 +62,7 @@ class B2DEvalDataset(Dataset):
             )
             loader = Bench2DriveSceneLoader(config)
             tokens = loader.get_scene_tokens()
+            tokens = tokens[::token_stride]
 
             valid = 0
             for token in tokens:
@@ -92,7 +94,7 @@ class B2DEvalDataset(Dataset):
             agent_input = scene.get_agent_input(-1)
             features = self.feature_builder.compute_features(agent_input)
 
-        agent_states, agent_labels, _ = scene.get_agents(-1)
+        agent_states, agent_labels = scene.get_future_agents(-1, num_timesteps=8)
 
         return {
             "features": features,
@@ -134,7 +136,7 @@ def eval_collate_fn(batch: List[Dict]) -> Dict:
     }
 
 
-def load_model(checkpoint_path: str, config: Bench2DriveConfig, device: str = "cuda"):
+def load_model(checkpoint_path: str, config: Bench2DriveConfig, device: str = "cuda", allow_partial_load: bool = False):
     """
     Load DiffusionDrive model with B2D normalization from checkpoint.
 
@@ -142,9 +144,12 @@ def load_model(checkpoint_path: str, config: Bench2DriveConfig, device: str = "c
         checkpoint_path: Path to Lightning checkpoint.
         config: Bench2DriveConfig with correct normalization params.
         device: Target device.
+        allow_partial_load: If True, continue even if checkpoint keys don't
+            match exactly (missing/unexpected keys). Otherwise raises.
 
     Returns:
-        Model in eval mode on the target device.
+        (model, load_info) where model is in eval mode on the target device
+        and load_info is a dict with strict/missing_keys/unexpected_keys.
     """
     model = V2TransfuserModelWrapper(config)
 
@@ -162,22 +167,28 @@ def load_model(checkpoint_path: str, config: Bench2DriveConfig, device: str = "c
         else:
             cleaned[k] = v
 
-    # Try strict load first
-    try:
-        model.load_state_dict(cleaned, strict=True)
-        print(f"Loaded checkpoint (strict=True): {checkpoint_path}")
-    except RuntimeError as e:
-        print(f"Strict load failed: {e}")
-        print("Falling back to strict=False...")
-        missing, unexpected = model.load_state_dict(cleaned, strict=False)
-        if missing:
-            print(f"  Missing keys ({len(missing)}): {missing[:5]}...")
-        if unexpected:
-            print(f"  Unexpected keys ({len(unexpected)}): {unexpected[:5]}...")
+    missing, unexpected = model.load_state_dict(cleaned, strict=False)
+    load_info = {
+        "strict": not (missing or unexpected),
+        "missing_keys": len(missing),
+        "unexpected_keys": len(unexpected),
+    }
+    if missing or unexpected:
+        msg = (
+            f"Checkpoint mismatch: {len(missing)} missing keys "
+            f"(e.g. {missing[:3]}), {len(unexpected)} unexpected keys "
+            f"(e.g. {unexpected[:3]}). A partially loaded model produces "
+            "garbage metrics."
+        )
+        if not allow_partial_load:
+            raise RuntimeError(msg + " Pass --allow-partial-load to override.")
+        print(f"WARNING: {msg} Continuing due to --allow-partial-load.")
+    else:
+        print(f"Loaded checkpoint (all keys matched): {checkpoint_path}")
 
     model = model.to(device)
     model.eval()
-    return model
+    return model, load_info
 
 
 def evaluate(
@@ -249,6 +260,10 @@ def parse_args():
     parser.add_argument("--device", type=str, default="cuda")
     parser.add_argument("--dev-mode", action="store_true")
     parser.add_argument("--use-gt", action="store_true")
+    parser.add_argument("--allow-partial-load", action="store_true",
+                        help="Evaluate even if checkpoint keys are missing/unexpected (results are suspect)")
+    parser.add_argument("--token-stride", type=int, default=1,
+                        help="Evaluate every Nth 10Hz token (5 ≈ 2Hz VAD keyframe density)")
     return parser.parse_args()
 
 
@@ -284,13 +299,14 @@ def main():
 
     # Model
     if not args.use_gt:
-        model = load_model(args.checkpoint, config, args.device)
+        model, load_info = load_model(args.checkpoint, config, args.device, args.allow_partial_load)
     else:
         model = None
+        load_info = {"strict": True, "missing_keys": 0, "unexpected_keys": 0}
         print("Using ground truth as predictions (pipeline verification)")
 
     # Dataset + loader
-    dataset = B2DEvalDataset(scenario_paths, feature_builder, use_gt=args.use_gt)
+    dataset = B2DEvalDataset(scenario_paths, feature_builder, use_gt=args.use_gt, token_stride=args.token_stride)
     dataloader = DataLoader(
         dataset,
         batch_size=args.batch_size,
@@ -341,6 +357,13 @@ def main():
             "batch_size": args.batch_size,
             "dev_mode": args.dev_mode,
             "use_gt": args.use_gt,
+            "checkpoint_load": load_info,
+            "token_stride": args.token_stride,
+            "metric_definitions": {
+                "collision": "per-horizon mean of per-step flags over [0,t], GT-collision-masked (VAD/STP3); col_any_* = cumulative any()",
+                "L2_avg_vad": "mean of period-average L2 at 1s/2s/3s",
+                "agent_occupancy": "per-future-timestep agent states (get_future_agents)",
+            },
         },
         "results": overall,
         "per_scenario_results": per_scenario,
