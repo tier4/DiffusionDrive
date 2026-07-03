@@ -12,54 +12,6 @@ EGO_WIDTH = 1.85
 EGO_LENGTH = 4.084
 
 
-def polygon_simple(r, c, shape=None):
-    """
-    Rasterize a polygon to pixel indices using ray-casting.
-
-    Args:
-        r: Row coordinates of polygon vertices.
-        c: Column coordinates of polygon vertices.
-        shape: (max_rows, max_cols) for bounds clipping.
-
-    Returns:
-        (rr, cc): Row and column indices of pixels inside the polygon.
-    """
-    if shape is not None:
-        max_r_bound, max_c_bound = shape
-    else:
-        max_r_bound = int(np.max(r)) + 1
-        max_c_bound = int(np.max(c)) + 1
-
-    min_r = max(0, int(np.min(r)))
-    min_c = max(0, int(np.min(c)))
-    max_r = min(max_r_bound, int(np.max(r)) + 1)
-    max_c = min(max_c_bound, int(np.max(c)) + 1)
-
-    rr = []
-    cc = []
-
-    n = len(r)
-    for i in range(min_r, max_r):
-        for j in range(min_c, max_c):
-            inside = False
-            p1x, p1y = r[0], c[0]
-            for k in range(1, n + 1):
-                p2x, p2y = r[k % n], c[k % n]
-                if j > min(p1y, p2y):
-                    if j <= max(p1y, p2y):
-                        if i <= max(p1x, p2x):
-                            if p1y != p2y:
-                                xinters = (j - p1y) * (p2x - p1x) / (p2y - p1y) + p1x
-                            if p1x == p2x or i <= xinters:
-                                inside = not inside
-                p1x, p1y = p2x, p2y
-            if inside:
-                rr.append(i)
-                cc.append(j)
-
-    return np.array(rr, dtype=np.int32), np.array(cc, dtype=np.int32)
-
-
 class PlanningMetric:
     """
     Collision metric calculator adapted from STP3/VAD.
@@ -71,10 +23,6 @@ class PlanningMetric:
         self.Y_BOUND = [-50.0, 50.0, 0.5]
         self.Z_BOUND = [-10.0, 10.0, 20.0]
 
-        dx, bx, _ = self._gen_dx_bx(self.X_BOUND, self.Y_BOUND, self.Z_BOUND)
-        self.dx = dx[:2]
-        self.bx = bx[:2]
-
         bev_resolution, bev_start_position, bev_dimension = self._calc_bev_params(
             self.X_BOUND, self.Y_BOUND, self.Z_BOUND
         )
@@ -84,13 +32,6 @@ class PlanningMetric:
 
         self.W = EGO_WIDTH
         self.H = EGO_LENGTH
-
-    @staticmethod
-    def _gen_dx_bx(xbound, ybound, zbound):
-        dx = torch.Tensor([row[2] for row in [xbound, ybound, zbound]])
-        bx = torch.Tensor([row[0] + row[2] / 2.0 for row in [xbound, ybound, zbound]])
-        nx = torch.LongTensor([int((row[1] - row[0]) / row[2]) for row in [xbound, ybound, zbound]])
-        return dx, bx, nx
 
     @staticmethod
     def _calc_bev_params(x_bounds, y_bounds, z_bounds):
@@ -216,6 +157,39 @@ class PlanningMetric:
 
         return segmentation, pedestrian
 
+    def _traj_point_to_pixel(self, x, y):
+        """Quantize a trajectory point with the SAME rounding as _world_to_pixel."""
+        px = int(np.round((x - self.bev_start_position[0]) / self.bev_resolution[0]))
+        py = int(np.round((y - self.bev_start_position[1]) / self.bev_resolution[1]))
+        return px, py
+
+    def _box_collision_flags(self, traj, occupancy):
+        """Per-timestep ego-box collision flags for one trajectory.
+
+        Args:
+            traj: [T, >=2] (x, y[, heading]) trajectory.
+            occupancy: [T, H, W] occupancy grid (tensor or ndarray).
+
+        Returns:
+            np.ndarray [T] bool.
+        """
+        H = int(self.bev_dimension[0])
+        W = int(self.bev_dimension[1])
+        T = traj.shape[0]
+        flags = np.zeros(T, dtype=bool)
+        for t in range(T):
+            x, y = traj[t, 0], traj[t, 1]
+            heading = traj[t, 2] if traj.shape[1] > 2 else 0.0
+            corners = self._get_agent_corners(x, y, heading, self.H, self.W)
+            pixel_corners = self._world_to_pixel(corners)
+            rr, cc = self._rasterize_polygon(pixel_corners, H, W)
+            if len(rr) > 0:
+                occ = occupancy[t]
+                if torch.is_tensor(occ):
+                    occ = occ.numpy()
+                flags[t] = bool(np.any(occ[rr, cc] > 0))
+        return flags
+
     def evaluate_coll(
         self,
         trajs: np.ndarray,
@@ -223,18 +197,24 @@ class PlanningMetric:
         occupancy: np.ndarray,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
-        Check trajectory collisions against occupancy grid.
+        Check trajectory collisions against per-timestep occupancy grids.
+
+        STP3/VAD semantics (metric_stp3.py:267-287): timesteps where the GT
+        trajectory itself box-collides are masked out of BOTH the point and
+        box collision flags (annotation noise / unavoidable-contact filter).
 
         Args:
             trajs: [B, T, 3] predicted trajectories (x, y, heading).
-            gt_trajs: [B, T, 3] ground truth (unused in collision check).
+            gt_trajs: [B, T, 3] ground truth — used for collision masking.
             occupancy: [B, T, H, W] occupancy grids.
 
         Returns:
-            (obj_coll, obj_box_coll) each [B, T] boolean tensors.
+            (obj_coll, obj_box_coll) each [B, T] {0,1} tensors.
         """
         if torch.is_tensor(trajs):
             trajs = trajs.cpu().numpy()
+        if torch.is_tensor(gt_trajs):
+            gt_trajs = gt_trajs.cpu().numpy()
 
         B, T, _ = trajs.shape
         H = int(self.bev_dimension[0])
@@ -244,30 +224,25 @@ class PlanningMetric:
         obj_box_coll = np.zeros((B, T))
 
         for b in range(B):
+            occ_b = occupancy[b]
+            gt_box_coll = self._box_collision_flags(gt_trajs[b], occ_b)
+
             for t in range(T):
+                if gt_box_coll[t]:
+                    continue  # STP3 m1 mask
                 x, y = trajs[b, t, 0], trajs[b, t, 1]
-                heading = trajs[b, t, 2] if trajs.shape[2] > 2 else 0.0
-
-                px = int((x - self.bev_start_position[0]) / self.bev_resolution[0])
-                py = int((y - self.bev_start_position[1]) / self.bev_resolution[1])
-
+                px, py = self._traj_point_to_pixel(x, y)
                 if 0 <= px < H and 0 <= py < W:
-                    occ = occupancy[b, t]
+                    occ = occ_b[t]
                     if torch.is_tensor(occ):
                         occ = occ.numpy()
                     if occ[px, py] > 0:
                         obj_coll[b, t] = 1
 
-                corners = self._get_agent_corners(x, y, heading, self.H, self.W)
-                pixel_corners = self._world_to_pixel(corners)
-                rr, cc = polygon_simple(pixel_corners[:, 0], pixel_corners[:, 1], shape=(H, W))
-                valid = (rr >= 0) & (rr < H) & (cc >= 0) & (cc < W)
-                rr, cc = rr[valid], cc[valid]
-                if len(rr) > 0:
-                    occ = occupancy[b, t]
-                    if torch.is_tensor(occ):
-                        occ = occ.numpy()
-                    if np.any(occ[rr, cc] > 0):
-                        obj_box_coll[b, t] = 1
+            pred_box_coll = self._box_collision_flags(trajs[b], occ_b)
+            # STP3 m2 mask
+            obj_box_coll[b] = np.logical_and(
+                pred_box_coll, np.logical_not(gt_box_coll)
+            ).astype(float)
 
         return torch.tensor(obj_coll), torch.tensor(obj_box_coll)

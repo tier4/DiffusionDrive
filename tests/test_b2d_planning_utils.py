@@ -44,13 +44,13 @@ def test_planning_metric_collision_free():
 
 def test_polygon_rasterization():
     """A simple square polygon should fill the expected region."""
-    from navsim.evaluate.b2d_planning_utils import polygon_simple
+    from navsim.evaluate.b2d_planning_utils import PlanningMetric
 
-    # Square from (2,2) to (5,5)
-    r = np.array([2, 2, 5, 5], dtype=np.float64)
-    c = np.array([2, 5, 5, 2], dtype=np.float64)
+    pm = PlanningMetric()
+    # Square from (2,2) to (5,5), corners as (row, col)
+    corners = np.array([[2, 2], [2, 5], [5, 5], [5, 2]], dtype=np.int32)
 
-    rr, cc = polygon_simple(r, c, shape=(10, 10))
+    rr, cc = pm._rasterize_polygon(corners, 10, 10)
     assert len(rr) > 0
     # All points should be within the polygon bounds
     assert np.all(rr >= 2) and np.all(rr <= 5)
@@ -123,3 +123,51 @@ def test_get_label_rejects_legacy_batched_static_states():
     labels = np.zeros((32, 5), dtype=bool)
     with pytest.raises(ValueError, match="per-timestep"):
         pm.get_label(states, labels, num_timesteps=6)
+
+
+def _single_parked_agent_occupancy(pm, T, x=5.0, y=0.0):
+    states = np.zeros((T, 1, 5), dtype=np.float32)
+    labels = np.ones((T, 1), dtype=bool)
+    states[:, 0] = [x, y, 0.0, 4.0, 2.0]
+    seg, _ = pm.get_label(states, labels, num_timesteps=T)
+    return seg
+
+
+def test_gt_collision_timesteps_are_masked():
+    """STP3 semantics: if the GT trajectory itself collides at t, that t is
+    excluded — GT-as-prediction must report zero collisions."""
+    from navsim.evaluate.b2d_planning_utils import PlanningMetric
+
+    pm = PlanningMetric()
+    seg = _single_parked_agent_occupancy(pm, T=2)
+    # pred == gt, both drive straight through the parked agent at t=0
+    traj = np.array([[[5.0, 0.0, 0.0], [12.0, 0.0, 0.0]]], dtype=np.float32)
+
+    obj_coll, obj_box_coll = pm.evaluate_coll(traj, traj.copy(), seg)
+    assert obj_coll.sum() == 0
+    assert obj_box_coll.sum() == 0
+
+
+def test_pred_collision_with_offpath_agent_detected():
+    """A predicted trajectory hitting an agent the GT avoids IS a collision."""
+    from navsim.evaluate.b2d_planning_utils import PlanningMetric
+
+    pm = PlanningMetric()
+    seg = _single_parked_agent_occupancy(pm, T=1)
+    pred = np.array([[[5.0, 0.0, 0.0]]], dtype=np.float32)   # drives into agent
+    gt = np.array([[[5.0, 10.0, 0.0]]], dtype=np.float32)    # GT swerves clear
+
+    obj_coll, obj_box_coll = pm.evaluate_coll(pred, gt, seg)
+    assert obj_coll[0, 0] == 1
+    assert obj_box_coll[0, 0] == 1
+
+
+def test_point_quantization_rejects_out_of_grid():
+    """int() truncation used to map x=-50.4 into cell 0; np.round must not."""
+    from navsim.evaluate.b2d_planning_utils import PlanningMetric
+
+    pm = PlanningMetric()
+    px, _ = pm._traj_point_to_pixel(-50.4, 0.0)
+    assert px < 0  # out of grid → rejected by the bounds check
+    px, _ = pm._traj_point_to_pixel(-49.9, 0.0)
+    assert px == 0  # genuinely inside cell 0 ([-50, -49.5))
