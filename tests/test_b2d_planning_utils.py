@@ -111,3 +111,15 @@ def test_get_label_rejects_static_agent_states():
     labels = np.zeros(5, dtype=bool)
     with pytest.raises(ValueError, match="per-timestep"):
         pm.get_label(states, labels, num_timesteps=2)
+
+
+def test_get_label_rejects_legacy_batched_static_states():
+    """Legacy [B, N, 5] (B != num_timesteps) must raise, not be silently
+    misread as [T, N, 5]."""
+    from navsim.evaluate.b2d_planning_utils import PlanningMetric
+
+    pm = PlanningMetric()
+    states = np.zeros((32, 5, 5), dtype=np.float32)   # old [B, N, 5], B=32
+    labels = np.zeros((32, 5), dtype=bool)
+    with pytest.raises(ValueError, match="per-timestep"):
+        pm.get_label(states, labels, num_timesteps=6)

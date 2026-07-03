@@ -156,7 +156,10 @@ class PlanningMetric:
 
         Args:
             gt_agent_states: [B, T, N, 5] or [T, N, 5] of
-                (x, y, heading, length, width) in the current ego frame.
+                (x, y, heading, length, width) in the current ego frame. The
+                3-D form is only accepted when its leading dimension equals
+                ``num_timesteps`` exactly, to avoid misreading a legacy
+                static [B, N, 5] batch as per-timestep states.
             gt_agent_labels: [B, T, N] or [T, N] boolean validity mask.
             num_timesteps: Number of future timesteps T to rasterize.
 
@@ -168,6 +171,15 @@ class PlanningMetric:
         gt_agent_states = np.asarray(gt_agent_states)
         gt_agent_labels = np.asarray(gt_agent_labels)
         if gt_agent_states.ndim == 3:
+            if gt_agent_states.shape[0] != num_timesteps:
+                raise ValueError(
+                    "gt_agent_states with ndim==3 must be [T, N, 5] with T "
+                    f"exactly equal to num_timesteps ({num_timesteps}); got "
+                    f"shape {gt_agent_states.shape}. Legacy static [B, N, 5] "
+                    "input is not accepted here — per-timestep states are "
+                    "required. If you need a batch, pass an explicit 4-D "
+                    "[B, T, N, 5] array instead."
+                )
             gt_agent_states = gt_agent_states[np.newaxis, ...]
             gt_agent_labels = gt_agent_labels[np.newaxis, ...]
         if gt_agent_states.ndim != 4:
