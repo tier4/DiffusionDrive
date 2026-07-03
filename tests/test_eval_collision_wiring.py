@@ -14,8 +14,8 @@ def test_compute_metrics_with_agents_returns_collision():
     gt[:, 0] = np.arange(1, 9)
     pred = gt.copy()
 
-    agent_states = np.zeros((5, 5), dtype=np.float32)
-    agent_labels = np.zeros(5, dtype=bool)
+    agent_states = np.zeros((8, 5, 5), dtype=np.float32)   # [T, N, 5]
+    agent_labels = np.zeros((8, 5), dtype=bool)             # [T, N]
 
     result = metrics.compute_metrics(
         pred_trajectory=pred,
@@ -34,8 +34,10 @@ def test_compute_metrics_with_agents_returns_collision():
     assert "box_col_2.0s" in col
     assert "box_col_3.0s" in col
     # Overall averages
-    assert "col_avg" in col
-    assert "box_col_avg" in col
+    assert "col_avg_vad" in col
+    assert "col_avg_full" in col
+    assert "box_col_avg_vad" in col
+    assert "box_col_avg_full" in col
 
 
 def test_compute_metrics_without_agents_returns_empty_collision():
@@ -62,13 +64,15 @@ def test_aggregate_preserves_collision_metrics():
     gt = np.zeros((8, 3), dtype=np.float32)
     gt[:, 0] = np.arange(1, 9)
 
-    agent_states = np.zeros((5, 5), dtype=np.float32)
-    agent_labels = np.zeros(5, dtype=bool)
+    agent_states = np.zeros((8, 5, 5), dtype=np.float32)   # [T, N, 5]
+    agent_labels = np.zeros((8, 5), dtype=bool)             # [T, N]
 
     m1 = metrics.compute_metrics(gt.copy(), gt, agent_states, agent_labels)
     m2 = metrics.compute_metrics(gt.copy(), gt, agent_states, agent_labels)
 
     agg = metrics.aggregate_metrics([m1, m2])
-    assert "col_avg" in agg["collision"]
-    assert "box_col_avg" in agg["collision"]
+    assert "col_avg_vad" in agg["collision"]
+    assert "box_col_avg_vad" in agg["collision"]
+    assert "col_avg_full" in agg["collision"]
+    assert "box_col_avg_full" in agg["collision"]
     assert "col_1.0s" in agg["collision"]

@@ -124,3 +124,51 @@ def test_aggregate_metrics():
     agg = metrics.aggregate_metrics([m1, m2])
     assert agg["absolute_l2"]["L2_0.5s"] == pytest.approx(2.0)
     assert agg["absolute_l2"]["L2_avg_vad"] == pytest.approx(2.0)
+
+
+def test_l2_avg_vad_uses_integer_horizons_only():
+    """VAD's headline average is mean(L2@1s, L2@2s, L2@3s), not all six horizons."""
+    from navsim.evaluate.b2d_metrics import B2DOpenLoopMetrics
+
+    metrics = B2DOpenLoopMetrics(num_timesteps=8, timestep_sec=0.5)
+    gt = np.zeros((8, 3), dtype=np.float32)
+    pred = gt.copy()
+    # per-step L2 error = 1, 2, ..., 8  → period_avg(t) = (t+2)/2
+    pred[:, 1] = np.arange(1, 9)
+
+    result = metrics.compute_metrics(pred, gt)
+    l2 = result["absolute_l2"]
+    # period averages: 1s→1.5, 2s→2.5, 3s→3.5
+    assert abs(l2["L2_1.0s"] - 1.5) < 1e-6
+    assert abs(l2["L2_2.0s"] - 2.5) < 1e-6
+    assert abs(l2["L2_3.0s"] - 3.5) < 1e-6
+    assert abs(l2["L2_avg_vad"] - 2.5) < 1e-6   # (1.5+2.5+3.5)/3, NOT 2.25
+
+
+def test_collision_horizons_are_mean_not_any():
+    """VAD reports mean per-step collision fraction up to each horizon."""
+    from navsim.evaluate.b2d_metrics import B2DOpenLoopMetrics
+
+    metrics = B2DOpenLoopMetrics(num_timesteps=8, timestep_sec=0.5)
+    T = 8
+    pred = np.zeros((T, 3), dtype=np.float32)
+    pred[:, 0] = np.arange(1, 9)          # drives forward through x=1..8
+    gt = pred.copy()
+    gt[:, 1] = 10.0                        # GT is far off to the side (no masking)
+
+    # agent sits on the pred waypoint x=1 ONLY at t=0, then disappears
+    states = np.zeros((T, 1, 5), dtype=np.float32)
+    labels = np.zeros((T, 1), dtype=bool)
+    states[0, 0] = [1.0, 0.0, 0.0, 4.0, 2.0]
+    labels[0, 0] = True
+
+    col = metrics.compute_metrics(pred, gt, states, labels)["collision"]
+    # per-step flags = [1, 0, 0, 0, 0, 0, 0, 0]
+    assert abs(col["col_0.5s"] - 1.0) < 1e-6
+    assert abs(col["col_1.0s"] - 0.5) < 1e-6
+    assert abs(col["col_2.0s"] - 0.25) < 1e-6
+    assert abs(col["col_3.0s"] - 1.0 / 6.0) < 1e-6
+    assert abs(col["col_any_1.0s"] - 1.0) < 1e-6      # diagnostic keeps any()
+    assert abs(col["col_avg_full"] - 1.0 / 8.0) < 1e-6
+    expected_vad = (0.5 + 0.25 + 1.0 / 6.0) / 3.0
+    assert abs(col["col_avg_vad"] - expected_vad) < 1e-6

@@ -14,9 +14,12 @@ VAD-comparable horizons: 0.5s–3.0s (first 6 of 8 timesteps).
 import numpy as np
 from typing import Dict, List, Optional
 
+from navsim.evaluate.b2d_planning_utils import PlanningMetric
 
-# Horizons reported for VAD comparison (6 timesteps, 0.5s–3.0s)
+
+# VAD reports 1s/2s/3s horizons; at 0.5s per step these are indices 1, 3, 5.
 _VAD_NUM_TIMESTEPS = 6
+_VAD_HORIZON_INDICES = (1, 3, 5)
 
 
 class B2DOpenLoopMetrics:
@@ -30,6 +33,12 @@ class B2DOpenLoopMetrics:
         """
         self.num_timesteps = num_timesteps
         self.timestep_sec = timestep_sec
+
+        if abs(timestep_sec - 0.5) > 1e-9:
+            raise ValueError(
+                f"VAD horizon indices assume timestep_sec=0.5, got {timestep_sec}"
+            )
+        self._planning_metric = PlanningMetric()
 
         self.horizon_labels = [
             f"L2_{(i + 1) * timestep_sec:.1f}s" for i in range(num_timesteps)
@@ -48,8 +57,8 @@ class B2DOpenLoopMetrics:
         Args:
             pred_trajectory: [T, 3] predicted (x, y, heading) in ego-centric coords.
             gt_trajectory: [T, 3] ground truth (x, y, heading) in ego-centric coords.
-            gt_agent_states: Optional [N, 5] agent (x, y, heading, length, width).
-            gt_agent_labels: Optional [N] boolean validity mask.
+            gt_agent_states: Optional [T, N, 5] agent (x, y, heading, length, width).
+            gt_agent_labels: Optional [T, N] boolean validity mask.
 
         Returns:
             Dict with keys: absolute_l2, offset_l2, collision.
@@ -89,7 +98,6 @@ class B2DOpenLoopMetrics:
         """Compute period-average L2 at each horizon plus averages."""
         result = {}
 
-        vad_horizon_values = []
         all_horizon_values = []
 
         for t in range(T):
@@ -97,10 +105,9 @@ class B2DOpenLoopMetrics:
             label = self.horizon_labels[t]
             result[label] = period_avg
             all_horizon_values.append(period_avg)
-            if t < _VAD_NUM_TIMESTEPS:
-                vad_horizon_values.append(period_avg)
 
-        result["L2_avg_vad"] = float(np.mean(vad_horizon_values)) if vad_horizon_values else 0.0
+        vad_values = [all_horizon_values[i] for i in _VAD_HORIZON_INDICES if i < T]
+        result["L2_avg_vad"] = float(np.mean(vad_values)) if vad_values else 0.0
         result["L2_avg_full"] = float(np.mean(all_horizon_values)) if all_horizon_values else 0.0
 
         return result
@@ -113,43 +120,46 @@ class B2DOpenLoopMetrics:
         gt_agent_labels: np.ndarray,
         T: int,
     ) -> Dict[str, float]:
-        """Compute collision rates using PlanningMetric.
+        """Collision rates with VAD/STP3 semantics.
 
-        Reports per-horizon cumulative collision rates matching VAD format:
-        "did any collision happen from step 0 up to step t?"
+        Per-horizon values are the MEAN of per-step collision flags over
+        steps [0, t] (VAD: plan_obj_col_{t}s = obj_coll.mean()). Timesteps
+        where the GT trajectory itself collides are masked inside
+        evaluate_coll. col_any_* keys keep the cumulative-any diagnostic.
         """
-        from navsim.evaluate.b2d_planning_utils import PlanningMetric
         import torch
 
-        pm = PlanningMetric()
-
-        if gt_agent_states.ndim == 2:
+        gt_agent_states = np.asarray(gt_agent_states)
+        gt_agent_labels = np.asarray(gt_agent_labels).astype(bool)
+        if gt_agent_states.ndim == 3:  # [T, N, 5] → [1, T, N, 5]
             gt_agent_states = gt_agent_states[np.newaxis, ...]
             gt_agent_labels = gt_agent_labels[np.newaxis, ...]
 
-        seg, ped = pm.get_label(gt_agent_states, gt_agent_labels, num_timesteps=T)
+        seg, ped = self._planning_metric.get_label(
+            gt_agent_states, gt_agent_labels, num_timesteps=T
+        )
         occupancy = torch.logical_or(seg, ped)
 
-        pred_batch = pred_traj[np.newaxis, ...]  # [1, T, 3]
-        gt_batch = gt_traj[np.newaxis, ...]
-
-        obj_coll, obj_box_coll = pm.evaluate_coll(pred_batch, gt_batch, occupancy)
-        # obj_coll, obj_box_coll: [1, T] boolean per-timestep collision flags
+        obj_coll, obj_box_coll = self._planning_metric.evaluate_coll(
+            pred_traj[np.newaxis, ...], gt_traj[np.newaxis, ...], occupancy
+        )
 
         result = {}
-
-        # Per-horizon cumulative collision (VAD format):
-        # At horizon t, report whether ANY collision occurred in steps [0, t]
         for t in range(T):
-            horizon_sec = (t + 1) * self.timestep_sec
-            label = f"{horizon_sec:.1f}s"
-            # Cumulative: any collision from step 0 to step t
-            result[f"col_{label}"] = float(obj_coll[0, : t + 1].any().float())
-            result[f"box_col_{label}"] = float(obj_box_coll[0, : t + 1].any().float())
+            label = f"{(t + 1) * self.timestep_sec:.1f}s"
+            result[f"col_{label}"] = float(obj_coll[0, : t + 1].float().mean())
+            result[f"box_col_{label}"] = float(obj_box_coll[0, : t + 1].float().mean())
+            result[f"col_any_{label}"] = float(obj_coll[0, : t + 1].any().float())
+            result[f"box_col_any_{label}"] = float(obj_box_coll[0, : t + 1].any().float())
 
-        # Overall averages (across all horizons)
-        result["col_avg"] = float(obj_coll.float().mean())
-        result["box_col_avg"] = float(obj_box_coll.float().mean())
+        for prefix, flags in (("col", obj_coll), ("box_col", obj_box_coll)):
+            vad_values = [
+                result[f"{prefix}_{(i + 1) * self.timestep_sec:.1f}s"]
+                for i in _VAD_HORIZON_INDICES
+                if i < T
+            ]
+            result[f"{prefix}_avg_vad"] = float(np.mean(vad_values)) if vad_values else 0.0
+            result[f"{prefix}_avg_full"] = float(flags.float().mean())
 
         return result
 
