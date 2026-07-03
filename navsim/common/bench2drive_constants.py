@@ -19,6 +19,11 @@ BEV_SEMANTIC_RESOLUTION = BEV_SEMANTIC_RANGE_M / BEV_SEMANTIC_WIDTH  # 64m / 256
 # Agent tracking parameters
 MAX_AGENTS = 30  # From num_bounding_boxes in TransfuserConfig
 
+# Half-extent of the VAD-convention collision-evaluation grid ([-50, 50] m).
+# Used by get_future_agents so occupancy covers everywhere the ego can reach
+# within the 4 s horizon; must match PlanningMetric.X_BOUND/Y_BOUND.
+COLLISION_EVAL_RANGE_M = 50.0
+
 # Trajectory parameters
 NUM_FUTURE_WAYPOINTS = 8  # From trajectory_sampling: 4s / 0.5s = 8 waypoints
 FUTURE_TRAJECTORY_FRAME_STRIDE = 5  # Sample future trajectory every 5 frames (0.5s at 10Hz)

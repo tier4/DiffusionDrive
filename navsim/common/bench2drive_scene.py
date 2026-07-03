@@ -18,6 +18,7 @@ from navsim.common.bench2drive_constants import (
     MAX_AGENTS,
     BENCH2DRIVE_LIDAR_RANGE_M,
     FUTURE_TRAJECTORY_FRAME_STRIDE,
+    COLLISION_EVAL_RANGE_M,
 )
 from navsim.common.bev_map_utils import (
     transform_points_to_ego,
@@ -714,59 +715,25 @@ class Bench2DriveScene:
 
         return torch.tensor(trajectory, dtype=torch.float64)
 
-    def get_agents(self, frame_idx: int = -1) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def _extract_agents_from_anno(
+        self,
+        anno: dict,
+        ego_points: np.ndarray,
+        ego_heading_rad: float,
+        max_distance: float,
+        use_anno_distance: bool,
+    ):
+        """Extract agent states from one annotation, in the frame of the
+        given ego pose (which need not be the annotation's own frame).
+
+        Args:
+            max_distance: keep agents within this distance of the ego pose.
+            use_anno_distance: if True, filter on the annotation's precomputed
+                obj["distance"] (distance to the annotation frame's OWN ego) —
+                the historical get_agents behavior. If False, filter on the
+                ego-centric planar distance to the GIVEN ego pose (correct for
+                future-frame agents relative to the current ego).
         """
-        Get other agents' states and labels.
-
-        Returns:
-            agent_states: Tensor [max_agents, 5] with (x, y, heading, length, width)
-            agent_labels: Boolean tensor [max_agents] indicating valid agents
-            agent_types: Tensor [max_agents] with NavSim class IDs for BEV rendering
-
-        Key Difference from NAVSIM Implementation:
-        -------------------------------------------
-        NAVSIM: Uses rectangular/square filtering (-32m to +32m in X/Y axes)
-                This creates a 64m x 64m square region centered on ego
-                Naturally emphasizes frontal and side views
-
-        B2D:    Uses circular/radial filtering (42.5m radius, 360° coverage)
-                Filters agents by Euclidean distance from ego vehicle
-                Provides uniform coverage in all directions
-                Better for complex scenarios requiring full situational awareness
-        """
-        if frame_idx == -1:
-            # Use frame 0 when no history, otherwise use last history frame
-            frame_idx = max(0, self.history_frames - 1)
-
-        # Load annotation based on mode
-        # DEPRECATED: 10Hz sliding window mode removed
-        # if self.config.sliding_mode and self.all_frames is not None:
-        #     # True sliding window mode - use absolute index
-        #     anno = self._load_annotation_absolute(self.start_idx)
-        # else:
-        #     # Legacy mode - use relative frame index
-        #     anno = self._load_annotation(frame_idx)
-
-        # Use legacy mode only
-        anno = self._load_annotation(frame_idx)
-
-        # Find ego vehicle in bounding boxes - REQUIRED
-        ego_box = None
-        for box in anno["bounding_boxes"]:
-            if box["class"] == "ego_vehicle":
-                ego_box = box
-                break
-
-        if ego_box is None:
-            raise ValueError(
-                f"Ego vehicle not found in bounding boxes for agents frame {frame_idx}"
-            )
-
-        # Get ego position and heading for coordinate transforms
-        ego_points = np.array(ego_box["center"])  # [x, y, z] in world coordinates
-        ego_heading_deg = ego_box["rotation"][2]  # Current ego heading in degrees
-        ego_heading_rad = normalize_angle(np.radians(ego_heading_deg))
-
         # Process vehicles from bounding_boxes
         max_agents = MAX_AGENTS  # Maximum number of agents to track
         agent_states = np.zeros((max_agents, 5), dtype=np.float32)
@@ -824,9 +791,12 @@ class Bench2DriveScene:
             ego_centric_y = ego_coords[0, 1]
 
             # Use annotation distance instead of manual calculation (comprehensive fix plan)
-            distance = obj["distance"]  # Pre-calculated distance to ego
+            if use_anno_distance:
+                distance = obj["distance"]  # to the annotation frame's own ego
+            else:
+                distance = float(np.hypot(ego_centric_x, ego_centric_y))
             # Key difference: B2D uses circular filtering (42.5m radius) vs NAVSIM's square region
-            if distance > BENCH2DRIVE_LIDAR_RANGE_M / 2:  # 42.5m from 85m diameter
+            if distance > max_distance:  # 42.5m from 85m diameter
                 continue  # This provides 360° coverage unlike NAVSIM's frontal-focused square
 
             # Extract rotation and convert to ego-centric using simpler angle subtraction
@@ -869,11 +839,130 @@ class Bench2DriveScene:
             agent_types[agent_idx] = navsim_class
             agent_idx += 1
 
+        return agent_states, agent_labels, agent_types
+
+    def get_agents(self, frame_idx: int = -1) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """
+        Get other agents' states and labels.
+
+        Returns:
+            agent_states: Tensor [max_agents, 5] with (x, y, heading, length, width)
+            agent_labels: Boolean tensor [max_agents] indicating valid agents
+            agent_types: Tensor [max_agents] with NavSim class IDs for BEV rendering
+
+        Key Difference from NAVSIM Implementation:
+        -------------------------------------------
+        NAVSIM: Uses rectangular/square filtering (-32m to +32m in X/Y axes)
+                This creates a 64m x 64m square region centered on ego
+                Naturally emphasizes frontal and side views
+
+        B2D:    Uses circular/radial filtering (42.5m radius, 360° coverage)
+                Filters agents by Euclidean distance from ego vehicle
+                Provides uniform coverage in all directions
+                Better for complex scenarios requiring full situational awareness
+        """
+        if frame_idx == -1:
+            # Use frame 0 when no history, otherwise use last history frame
+            frame_idx = max(0, self.history_frames - 1)
+
+        # Load annotation based on mode
+        # DEPRECATED: 10Hz sliding window mode removed
+        # if self.config.sliding_mode and self.all_frames is not None:
+        #     # True sliding window mode - use absolute index
+        #     anno = self._load_annotation_absolute(self.start_idx)
+        # else:
+        #     # Legacy mode - use relative frame index
+        #     anno = self._load_annotation(frame_idx)
+
+        # Use legacy mode only
+        anno = self._load_annotation(frame_idx)
+
+        # Find ego vehicle in bounding boxes - REQUIRED
+        ego_box = None
+        for box in anno["bounding_boxes"]:
+            if box["class"] == "ego_vehicle":
+                ego_box = box
+                break
+
+        if ego_box is None:
+            raise ValueError(
+                f"Ego vehicle not found in bounding boxes for agents frame {frame_idx}"
+            )
+
+        # Get ego position and heading for coordinate transforms
+        ego_points = np.array(ego_box["center"])  # [x, y, z] in world coordinates
+        ego_heading_deg = ego_box["rotation"][2]  # Current ego heading in degrees
+        ego_heading_rad = normalize_angle(np.radians(ego_heading_deg))
+
+        agent_states, agent_labels, agent_types = self._extract_agents_from_anno(
+            anno,
+            ego_points,
+            ego_heading_rad,
+            max_distance=BENCH2DRIVE_LIDAR_RANGE_M / 2,
+            use_anno_distance=True,
+        )
         return (
             torch.from_numpy(agent_states),
             torch.from_numpy(agent_labels),
             torch.from_numpy(agent_types),
         )
+
+    def get_future_agents(
+        self, frame_idx: int = -1, num_timesteps: int = NUM_FUTURE_WAYPOINTS
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Agent states at each future waypoint time, in the CURRENT ego frame.
+
+        Timestep t corresponds to the same future annotation frame as
+        get_future_trajectory waypoint t (same stride logic), so occupancy
+        grids align 1:1 with trajectory waypoints.
+
+        Returns:
+            agent_states: [T, MAX_AGENTS, 5] float32 (x, y, heading, length, width)
+            agent_labels: [T, MAX_AGENTS] bool
+        """
+        if frame_idx == -1:
+            frame_idx = max(0, self.history_frames - 1)
+
+        current_anno = self._load_annotation(frame_idx)
+        ego_box = None
+        for box in current_anno["bounding_boxes"]:
+            if box["class"] == "ego_vehicle":
+                ego_box = box
+                break
+        if ego_box is None:
+            raise ValueError(
+                f"Ego vehicle not found in bounding boxes for frame {frame_idx}"
+            )
+        ego_points = np.array(ego_box["center"])
+        ego_heading_rad = normalize_angle(np.radians(ego_box["rotation"][2]))
+
+        sampling_rate = getattr(self.config, "sampling_rate", 5)
+        if sampling_rate == 1:
+            frame_stride = FUTURE_TRAJECTORY_FRAME_STRIDE
+        elif sampling_rate == 5:
+            frame_stride = 1
+        else:
+            raise ValueError(f"Unsupported sampling_rate={sampling_rate}")
+
+        states = np.zeros((num_timesteps, MAX_AGENTS, 5), dtype=np.float32)
+        labels = np.zeros((num_timesteps, MAX_AGENTS), dtype=bool)
+        for t in range(num_timesteps):
+            future_idx = frame_idx + (t + 1) * frame_stride
+            if future_idx >= len(self.anno_paths):
+                # Callers must pair this with a valid get_future_trajectory
+                # check; remaining timesteps stay empty rather than fabricated.
+                break
+            anno = self._load_annotation(future_idx)
+            s, l, _ = self._extract_agents_from_anno(
+                anno,
+                ego_points,
+                ego_heading_rad,
+                max_distance=COLLISION_EVAL_RANGE_M,
+                use_anno_distance=False,
+            )
+            states[t], labels[t] = s, l
+
+        return torch.from_numpy(states), torch.from_numpy(labels)
 
     def get_bev_semantic_map(self, frame_idx: int = -1) -> torch.Tensor:
         """
