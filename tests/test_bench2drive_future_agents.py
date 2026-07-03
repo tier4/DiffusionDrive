@@ -24,8 +24,13 @@ def test_get_future_agents_shapes_and_range(sample_config):
 
 
 def test_get_agents_unchanged_by_refactor(sample_config):
-    """get_agents must be byte-identical before/after the helper extraction —
-    this pins the training-path behavior B4 will change later, not B1."""
+    """Smoke-check the refactored get_agents path (shape/content sanity).
+
+    This only asserts shape and non-zeroness — it does not itself prove
+    byte-identical output. Bit-identity of the training path (use_anno_distance=True)
+    across the helper extraction was verified separately by diff review: that
+    branch's code is shared with the pre-refactor implementation and is left
+    unsorted/untouched by the eval-path (use_anno_distance=False) changes."""
     from navsim.common.bench2drive_dataloader import Bench2DriveSceneLoader
 
     loader = Bench2DriveSceneLoader(sample_config)

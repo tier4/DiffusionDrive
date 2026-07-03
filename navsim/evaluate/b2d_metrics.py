@@ -8,17 +8,20 @@ Computes:
 
 VAD method: period-average L2 over [0, t] at each horizon.
 DiffusionDrive uses 8 waypoints at 0.5s intervals (4.0s total).
-VAD-comparable horizons: 0.5s–3.0s (first 6 of 8 timesteps).
+
+Per-horizon collision (col_{t}s / box_col_{t}s) is the mean of per-step
+collision flags over [0, t]. col_avg_vad / box_col_avg_vad (and the L2
+equivalent, L2_avg_vad) are the mean of the 1s/2s/3s horizon values.
 """
 
 import numpy as np
+import torch
 from typing import Dict, List, Optional
 
 from navsim.evaluate.b2d_planning_utils import PlanningMetric
 
 
 # VAD reports 1s/2s/3s horizons; at 0.5s per step these are indices 1, 3, 5.
-_VAD_NUM_TIMESTEPS = 6
 _VAD_HORIZON_INDICES = (1, 3, 5)
 
 
@@ -127,8 +130,6 @@ class B2DOpenLoopMetrics:
         where the GT trajectory itself collides are masked inside
         evaluate_coll. col_any_* keys keep the cumulative-any diagnostic.
         """
-        import torch
-
         gt_agent_states = np.asarray(gt_agent_states)
         gt_agent_labels = np.asarray(gt_agent_labels).astype(bool)
         if gt_agent_states.ndim == 3:  # [T, N, 5] → [1, T, N, 5]

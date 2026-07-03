@@ -774,6 +774,37 @@ class Bench2DriveScene:
                             continue
                         objects_to_process.append((obj, obj_type, navsim_class))
 
+        # Nearest-first selection for the eval path only (use_anno_distance=False).
+        # Raw bounding_boxes order can silently drop a nearby colliding agent in
+        # dense frames once MAX_AGENTS is hit; sorting by distance first ensures
+        # the closest agents are kept. The training path (use_anno_distance=True)
+        # must keep the original iteration order and behavior exactly.
+        if not use_anno_distance:
+            candidate_distances = []
+            for obj, obj_class, navsim_class in objects_to_process:
+                obj_center = obj["center"]
+                obj_world_pos = np.array([[obj_center[0], obj_center[1], obj_center[2]]])
+                ego_coords = transform_points_to_ego(
+                    obj_world_pos, ego_points, ego_heading_rad, left_to_right=False
+                )
+                candidate_distances.append(
+                    float(np.hypot(ego_coords[0, 0], ego_coords[0, 1]))
+                )
+
+            order = np.argsort(candidate_distances, kind="stable")
+            objects_to_process = [objects_to_process[i] for i in order]
+            sorted_distances = [candidate_distances[i] for i in order]
+
+            num_within_range = sum(1 for d in sorted_distances if d <= max_distance)
+            num_kept = min(num_within_range, max_agents)
+            num_dropped = max(0, num_within_range - max_agents)
+            if num_dropped > 0:
+                logger.debug(
+                    f"_extract_agents_from_anno: kept {num_kept} agents, "
+                    f"dropped {num_dropped} agents within max_distance={max_distance}m "
+                    f"(nearest-first selection, MAX_AGENTS={max_agents})"
+                )
+
         # Process all objects with unified logic
         for obj, obj_class, navsim_class in objects_to_process:
             if agent_idx >= max_agents:
@@ -795,8 +826,10 @@ class Bench2DriveScene:
                 distance = obj["distance"]  # to the annotation frame's own ego
             else:
                 distance = float(np.hypot(ego_centric_x, ego_centric_y))
-            # Key difference: B2D uses circular filtering (42.5m radius) vs NAVSIM's square region
-            if distance > max_distance:  # 42.5m from 85m diameter
+            # Key difference: B2D uses circular filtering vs NAVSIM's square region.
+            # max_distance is caller-parameterized (e.g. BENCH2DRIVE_LIDAR_RANGE_M / 2
+            # for training, COLLISION_EVAL_RANGE_M for eval) — not a fixed 42.5m.
+            if distance > max_distance:
                 continue  # This provides 360° coverage unlike NAVSIM's frontal-focused square
 
             # Extract rotation and convert to ego-centric using simpler angle subtraction

@@ -46,6 +46,9 @@ class B2DEvalDataset(Dataset):
         use_gt: bool = False,
         token_stride: int = 1,
     ):
+        if token_stride < 1:
+            raise ValueError(f"token_stride must be >= 1, got {token_stride}")
+
         self.feature_builder = feature_builder
         self.use_gt = use_gt
         self.samples = []
@@ -363,6 +366,13 @@ def main():
                 "collision": "per-horizon mean of per-step flags over [0,t], GT-collision-masked (VAD/STP3); col_any_* = cumulative any()",
                 "L2_avg_vad": "mean of period-average L2 at 1s/2s/3s",
                 "agent_occupancy": "per-future-timestep agent states (get_future_agents)",
+                "deviations_from_bench2drivezoo": (
+                    "ego box centered on waypoint (no +0.5m forward offset), "
+                    "ego box rotated by per-timestep heading (reference sweeps axis-aligned), "
+                    "out-of-grid ego-box pixels dropped (reference clips onto border), "
+                    "unified np.round quantization — physically corrected, not bit-identical "
+                    "to Bench2DriveZoo-published numbers"
+                ),
             },
         },
         "results": overall,
