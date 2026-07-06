@@ -1,0 +1,52 @@
+# Example GitHub Actions workflow for running shell script tests
+# Copy this to .github/workflows/test-scripts.yml to use
+
+name: Shell Script Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'scripts/**'
+      - 'tests/scripts/**'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'scripts/**'
+      - 'tests/scripts/**'
+
+jobs:
+  test-scripts:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up test environment
+      run: |
+        # Set required environment variables
+        echo "NAVSIM_DEVKIT_ROOT=$GITHUB_WORKSPACE" >> $GITHUB_ENV
+        echo "NAVSIM_EXP_ROOT=/tmp/navsim_test" >> $GITHUB_ENV
+        echo "CUDA_VISIBLE_DEVICES=0,1" >> $GITHUB_ENV
+        
+        # Create necessary directories
+        mkdir -p /tmp/navsim_test
+    
+    - name: Make scripts executable
+      run: |
+        chmod +x scripts/**/*.sh
+        chmod +x tests/scripts/**/*.sh
+    
+    - name: Run shell script tests
+      run: |
+        cd tests/scripts
+        ./run_all_tests.sh
+    
+    - name: Upload test logs
+      if: failure()
+      uses: actions/upload-artifact@v3
+      with:
+        name: test-logs
+        path: |
+          logs/
+          /tmp/diffusiondrive_test_*/logs/

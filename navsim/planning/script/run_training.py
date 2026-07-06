@@ -127,8 +127,13 @@ def main(cfg: DictConfig) -> None:
     val_dataloader = DataLoader(val_data, **cfg.dataloader.params, shuffle=False)
     logger.info("Num validation samples: %d", len(val_data))
 
+    # Instantiate callbacks from the Hydra config
+    callbacks = [instantiate(c) for c in cfg.trainer.callbacks] if cfg.trainer.get("callbacks") else []
+    # Add agent-specific callbacks
+    callbacks.extend(agent.get_training_callbacks())
+
     logger.info("Building Trainer")
-    trainer = pl.Trainer(**cfg.trainer.params, callbacks=agent.get_training_callbacks())
+    trainer = pl.Trainer(**cfg.trainer.params, callbacks=callbacks)
 
     logger.info("Starting Training")
     trainer.fit(

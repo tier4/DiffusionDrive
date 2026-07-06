@@ -1,0 +1,28 @@
+# DiffusionDrive agent configuration for Bench2Drive dataset
+# This config combines BOTH B2D features AND normalization support
+_target_: navsim.agents.diffusiondrive.b2d_agent.Bench2DriveAgent
+_convert_: 'all'
+
+config:
+  _target_: navsim.agents.diffusiondrive.bench2drive_config.Bench2DriveConfig
+  _convert_: 'all'
+
+  trajectory_sampling:
+    _target_: nuplan.planning.simulation.trajectory.trajectory_sampling.TrajectorySampling
+    _convert_: 'all'
+    time_horizon: 4.0
+    interval_length: 0.5
+
+  latent: False
+  
+  # Configuration for Bench2Drive
+  dataset_type: "bench2drive"  # Important: set to bench2drive for proper normalization
+  
+  # Paths for Bench2Drive (accessible inside Docker via -v /mnt:/mnt)
+  bkb_path: "/mnt/nvme1/diffusiondrive/weights/resnet34_a1_in1k.bin"
+  plan_anchor_path: "/mnt/nvme1/diffusiondrive/weights/kmeans_b2d_v2_traj_20.npy"
+
+checkpoint_path: null
+lr: 5e-5
+
+# NO feature_builders or target_builders sections - handled in Python code

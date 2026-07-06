@@ -1,0 +1,279 @@
+{
+  "navsim": {
+    "1_cached_features": {
+      "camera_feature": {
+        "min": 0.0,
+        "max": 1.0,
+        "mean": 0.4278531087769402,
+        "std": 0.23229993890193507,
+        "count": 188743680,
+        "nan_count": 0,
+        "inf_count": 0,
+        "first_nan_batch": null
+      },
+      "lidar_feature": {
+        "min": 0.0,
+        "max": 1.0,
+        "mean": 0.04493933493892352,
+        "std": 0.1774316939627969,
+        "count": 15728640,
+        "nan_count": 0,
+        "inf_count": 0,
+        "first_nan_batch": null
+      },
+      "status_feature": {
+        "min": -2.7533812522888184,
+        "max": 14.025354385375977,
+        "mean": 0.8846737205982208,
+        "std": 2.4939915427477564,
+        "count": 1920,
+        "nan_count": 0,
+        "inf_count": 0,
+        "first_nan_batch": null
+      }
+    },
+    "2_cached_targets": {
+      "trajectory": {
+        "min": -13.446784086093622,
+        "max": 53.519683898847475,
+        "mean": 4.354805356162798,
+        "std": 9.35200776030509,
+        "count": 5760,
+        "nan_count": 0,
+        "inf_count": 0,
+        "first_nan_batch": null
+      },
+      "trajectory/x": {
+        "min": -0.038247945017279905,
+        "max": 53.519683898847475,
+        "mean": 12.914766174153195,
+        "std": 12.08990705934548,
+        "count": 1920,
+        "nan_count": 0,
+        "inf_count": 0,
+        "first_nan_batch": null
+      },
+      "trajectory/y": {
+        "min": -13.446784086093622,
+        "max": 14.35041757350227,
+        "mean": 0.16003050493906662,
+        "std": 2.4896913480860334,
+        "count": 1920,
+        "nan_count": 0,
+        "inf_count": 0,
+        "first_nan_batch": null
+      },
+      "trajectory/heading": {
+        "min": -1.3829657239505266,
+        "max": 1.3141053399891478,
+        "mean": -0.010380610603868998,
+        "std": 0.3030147713018799,
+        "count": 1920,
+        "nan_count": 0,
+        "inf_count": 0,
+        "first_nan_batch": null
+      },
+      "agent_states": {
+        "min": -31.992877960205078,
+        "max": 31.980295181274414,
+        "mean": 0.6260306550131903,
+        "std": 5.4683210919689165,
+        "count": 36000,
+        "nan_count": 0,
+        "inf_count": 0,
+        "first_nan_batch": null
+      },
+      "agent_labels": {
+        "min": 0.0,
+        "max": 1.0,
+        "mean": 0.2641666666666666,
+        "std": 0.4408884653615796,
+        "count": 7200,
+        "nan_count": 0,
+        "inf_count": 0,
+        "first_nan_batch": null
+      },
+      "bev_semantic_map": {
+        "min": 0.0,
+        "max": 6.0,
+        "mean": 0.8857744852701823,
+        "std": 1.2074549241258008,
+        "count": 7864320,
+        "nan_count": 0,
+        "inf_count": 0,
+        "first_nan_batch": null
+      }
+    },
+    "4_targets_components": {
+      "trajectory/x": {
+        "min": -0.038247945017279905,
+        "max": 53.519683898847475,
+        "mean": 12.914766174153195,
+        "std": 12.08990705934548,
+        "count": 1920,
+        "nan_count": 0,
+        "inf_count": 0,
+        "first_nan_batch": null
+      },
+      "trajectory/y": {
+        "min": -13.446784086093622,
+        "max": 14.35041757350227,
+        "mean": 0.16003050493906662,
+        "std": 2.4896913480860334,
+        "count": 1920,
+        "nan_count": 0,
+        "inf_count": 0,
+        "first_nan_batch": null
+      },
+      "trajectory/heading": {
+        "min": -1.3829657239505266,
+        "max": 1.3141053399891478,
+        "mean": -0.010380610603868998,
+        "std": 0.3030147713018799,
+        "count": 1920,
+        "nan_count": 0,
+        "inf_count": 0,
+        "first_nan_batch": null
+      }
+    }
+  },
+  "bench2drive": {
+    "1_cached_features": {
+      "camera_feature": {
+        "min": 0.0,
+        "max": 1.0,
+        "mean": 0.4883756698005729,
+        "std": 0.2641281673907695,
+        "count": 188743680,
+        "nan_count": 0,
+        "inf_count": 0,
+        "first_nan_batch": null
+      },
+      "lidar_feature": {
+        "min": 0.0,
+        "max": 1.0,
+        "mean": 0.05704795693357786,
+        "std": 0.18742861452404846,
+        "count": 15728640,
+        "nan_count": 0,
+        "inf_count": 0,
+        "first_nan_batch": null
+      },
+      "status_feature": {
+        "min": -19.898405075073242,
+        "max": 10.032695770263672,
+        "mean": 0.38748283634583164,
+        "std": 1.5624041823532386,
+        "count": 1920,
+        "nan_count": 0,
+        "inf_count": 0,
+        "first_nan_batch": null
+      }
+    },
+    "2_cached_targets": {
+      "trajectory": {
+        "min": -30.211844103995258,
+        "max": 32.547778856229435,
+        "mean": 0.999332270821014,
+        "std": 4.778699354638137,
+        "count": 5760,
+        "nan_count": 0,
+        "inf_count": 0,
+        "first_nan_batch": null
+      },
+      "trajectory/x": {
+        "min": -11.175093809004897,
+        "max": 32.547778856229435,
+        "mean": 1.371167069628269,
+        "std": 5.058831566537064,
+        "count": 1920,
+        "nan_count": 0,
+        "inf_count": 0,
+        "first_nan_batch": null
+      },
+      "trajectory/y": {
+        "min": -30.211844103995258,
+        "max": 32.52240704332587,
+        "mean": 1.6280852417686513,
+        "std": 6.432824863143067,
+        "count": 1920,
+        "nan_count": 0,
+        "inf_count": 0,
+        "first_nan_batch": null
+      },
+      "trajectory/heading": {
+        "min": -0.10643917774394228,
+        "max": 0.0036486159977872253,
+        "mean": -0.001255498933877987,
+        "std": 0.011078200701522291,
+        "count": 1920,
+        "nan_count": 0,
+        "inf_count": 0,
+        "first_nan_batch": null
+      },
+      "agent_states": {
+        "min": 0.0,
+        "max": 0.0,
+        "mean": 0.0,
+        "std": 0.0,
+        "count": 36000,
+        "nan_count": 0,
+        "inf_count": 0,
+        "first_nan_batch": null
+      },
+      "agent_labels": {
+        "min": 0.0,
+        "max": 0.0,
+        "mean": 0.0,
+        "std": 0.0,
+        "count": 7200,
+        "nan_count": 0,
+        "inf_count": 0,
+        "first_nan_batch": null
+      },
+      "bev_semantic_map": {
+        "min": 0.0,
+        "max": 4.0,
+        "mean": 0.09952557881673177,
+        "std": 0.48516822446099184,
+        "count": 7864320,
+        "nan_count": 0,
+        "inf_count": 0,
+        "first_nan_batch": null
+      }
+    },
+    "4_targets_components": {
+      "trajectory/x": {
+        "min": -11.175093809004897,
+        "max": 32.547778856229435,
+        "mean": 1.371167069628269,
+        "std": 5.058831566537064,
+        "count": 1920,
+        "nan_count": 0,
+        "inf_count": 0,
+        "first_nan_batch": null
+      },
+      "trajectory/y": {
+        "min": -30.211844103995258,
+        "max": 32.52240704332587,
+        "mean": 1.6280852417686513,
+        "std": 6.432824863143067,
+        "count": 1920,
+        "nan_count": 0,
+        "inf_count": 0,
+        "first_nan_batch": null
+      },
+      "trajectory/heading": {
+        "min": -0.10643917774394228,
+        "max": 0.0036486159977872253,
+        "mean": -0.001255498933877987,
+        "std": 0.011078200701522291,
+        "count": 1920,
+        "nan_count": 0,
+        "inf_count": 0,
+        "first_nan_batch": null
+      }
+    }
+  },
+  "comparison": {}
+}

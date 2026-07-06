@@ -18,9 +18,11 @@
 docker run -it \
     --gpus all \
     --ipc host \
+    --net carla_net \
     --ulimit memlock=-1 \
     --name "${CONTAINER_NAME:-diffusiondrive}" \
     -v "${WORKSPACE_DIR:-$(pwd)}:/workspace" \
     -v "${DATA_DIR:-/data}:/data" \
     -v "${HOME}/.ssh:/home/user/.ssh:ro" \
     diffusiondrive:latest
+

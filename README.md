@@ -71,6 +71,28 @@ https://github.com/user-attachments/assets/bd2364f3-73fd-4c29-b8b2-ead11f78926d
 - [Preparation of DiffusionDrive environment](docs/install.md)
 - [Training and Evaluation](docs/train_eval.md)
 
+### Quick Start with New Scripts (Community Contribution)
+
+> **Note:** The script reorganization below was contributed by a community member and is not part of the original DiffusionDrive release.
+
+We've reorganized our scripts for better maintainability and ease of use:
+
+```bash
+# Training with custom parameters
+./scripts/training/train.sh --name my_experiment --batch-size 64 --epochs 200
+
+# Run batch experiments
+./scripts/training/batch_experiments.sh --batch-sizes "32,64,128" --epochs 300
+
+# Evaluate a checkpoint
+./scripts/evaluation/eval.sh --checkpoint path/to/model.ckpt
+
+# Evaluate all checkpoints in a directory
+./scripts/evaluation/eval_all_checkpoints.sh --dir navsim_workspace/
+```
+
+See [scripts/README.md](scripts/README.md) for detailed documentation.
+
 
 ## Checkpoint
 

@@ -1,0 +1,1109 @@
+{
+  "total_files_analyzed": 247656,
+  "total_objects": 5472774,
+  "class_counts": {
+    "ego_vehicle": 247656,
+    "vehicle": 2953662,
+    "traffic_light": 943768,
+    "traffic_sign": 1311386,
+    "walker": 16302
+  },
+  "class_types": [
+    "string"
+  ],
+  "class_samples": {
+    "ego_vehicle": [
+      {
+        "file": "/workspace/Bench2Drive-Base/VehicleTurningRoute_Town12_Route997_Weather9/anno/00522.json.gz",
+        "class": "ego_vehicle",
+        "location": [
+          1644.4205322265625,
+          4278.8203125,
+          362.46820068359375
+        ],
+        "rotation": [
+          0.920258641242981,
+          0.0017692404799163342,
+          -171.34921264648438
+        ],
+        "extent": [
+          2.44619083404541,
+          0.9183566570281982,
+          0.7451388239860535
+        ],
+        "has_world2ego": true,
+        "has_world2vehicle": false,
+        "has_speed": true,
+        "all_fields": [
+          "class",
+          "id",
+          "type_id",
+          "base_type",
+          "location",
+          "rotation",
+          "bbx_loc",
+          "center",
+          "extent",
+          "world_cord",
+          "semantic_tags",
+          "color",
+          "speed",
+          "brake",
+          "road_id",
+          "lane_id",
+          "section_id",
+          "world2ego"
+        ]
+      },
+      {
+        "file": "/workspace/Bench2Drive-Base/VehicleTurningRoute_Town12_Route997_Weather9/anno/00421.json.gz",
+        "class": "ego_vehicle",
+        "location": [
+          1668.520263671875,
+          4267.07763671875,
+          362.04351806640625
+        ],
+        "rotation": [
+          0.752837061882019,
+          -0.008422830142080784,
+          98.69306945800781
+        ],
+        "extent": [
+          2.44619083404541,
+          0.9183566570281982,
+          0.7451388239860535
+        ],
+        "has_world2ego": true,
+        "has_world2vehicle": false,
+        "has_speed": true,
+        "all_fields": [
+          "class",
+          "id",
+          "type_id",
+          "base_type",
+          "location",
+          "rotation",
+          "bbx_loc",
+          "center",
+          "extent",
+          "world_cord",
+          "semantic_tags",
+          "color",
+          "speed",
+          "brake",
+          "road_id",
+          "lane_id",
+          "section_id",
+          "world2ego"
+        ]
+      },
+      {
+        "file": "/workspace/Bench2Drive-Base/VehicleTurningRoute_Town12_Route997_Weather9/anno/00473.json.gz",
+        "class": "ego_vehicle",
+        "location": [
+          1662.9014892578125,
+          4281.23193359375,
+          362.3113708496094
+        ],
+        "rotation": [
+          0.2504083812236786,
+          -3.2036752700805664,
+          163.4057159423828
+        ],
+        "extent": [
+          2.44619083404541,
+          0.9183566570281982,
+          0.7451388239860535
+        ],
+        "has_world2ego": true,
+        "has_world2vehicle": false,
+        "has_speed": true,
+        "all_fields": [
+          "class",
+          "id",
+          "type_id",
+          "base_type",
+          "location",
+          "rotation",
+          "bbx_loc",
+          "center",
+          "extent",
+          "world_cord",
+          "semantic_tags",
+          "color",
+          "speed",
+          "brake",
+          "road_id",
+          "lane_id",
+          "section_id",
+          "world2ego"
+        ]
+      },
+      {
+        "file": "/workspace/Bench2Drive-Base/VehicleTurningRoute_Town12_Route997_Weather9/anno/00514.json.gz",
+        "class": "ego_vehicle",
+        "location": [
+          1648.8289794921875,
+          4279.4765625,
+          362.4309997558594
+        ],
+        "rotation": [
+          0.8996109962463379,
+          0.009598832577466965,
+          -169.0665740966797
+        ],
+        "extent": [
+          2.44619083404541,
+          0.9183566570281982,
+          0.7451388239860535
+        ],
+        "has_world2ego": true,
+        "has_world2vehicle": false,
+        "has_speed": true,
+        "all_fields": [
+          "class",
+          "id",
+          "type_id",
+          "base_type",
+          "location",
+          "rotation",
+          "bbx_loc",
+          "center",
+          "extent",
+          "world_cord",
+          "semantic_tags",
+          "color",
+          "speed",
+          "brake",
+          "road_id",
+          "lane_id",
+          "section_id",
+          "world2ego"
+        ]
+      },
+      {
+        "file": "/workspace/Bench2Drive-Base/VehicleTurningRoute_Town12_Route997_Weather9/anno/00286.json.gz",
+        "class": "ego_vehicle",
+        "location": [
+          1668.520263671875,
+          4267.07763671875,
+          362.04351806640625
+        ],
+        "rotation": [
+          0.752837061882019,
+          -0.008422830142080784,
+          98.69306945800781
+        ],
+        "extent": [
+          2.44619083404541,
+          0.9183566570281982,
+          0.7451388239860535
+        ],
+        "has_world2ego": true,
+        "has_world2vehicle": false,
+        "has_speed": true,
+        "all_fields": [
+          "class",
+          "id",
+          "type_id",
+          "base_type",
+          "location",
+          "rotation",
+          "bbx_loc",
+          "center",
+          "extent",
+          "world_cord",
+          "semantic_tags",
+          "color",
+          "speed",
+          "brake",
+          "road_id",
+          "lane_id",
+          "section_id",
+          "world2ego"
+        ]
+      }
+    ],
+    "vehicle": [
+      {
+        "file": "/workspace/Bench2Drive-Base/VehicleTurningRoute_Town12_Route997_Weather9/anno/00522.json.gz",
+        "class": "vehicle",
+        "location": [
+          1647.8583984375,
+          4282.50244140625,
+          362.4440612792969
+        ],
+        "rotation": [
+          -0.3929749131202698,
+          -0.000579832645598799,
+          9.258578300476074
+        ],
+        "extent": [
+          2.2763495445251465,
+          1.0485360622406006,
+          0.8835831880569458
+        ],
+        "has_world2ego": false,
+        "has_world2vehicle": true,
+        "has_speed": true,
+        "all_fields": [
+          "class",
+          "state",
+          "id",
+          "location",
+          "rotation",
+          "bbx_loc",
+          "center",
+          "extent",
+          "world_cord",
+          "semantic_tags",
+          "type_id",
+          "color",
+          "base_type",
+          "num_points",
+          "distance",
+          "speed",
+          "brake",
+          "light_state",
+          "road_id",
+          "lane_id",
+          "section_id",
+          "world2vehicle"
+        ]
+      },
+      {
+        "file": "/workspace/Bench2Drive-Base/VehicleTurningRoute_Town12_Route997_Weather9/anno/00522.json.gz",
+        "class": "vehicle",
+        "location": [
+          1616.2025146484375,
+          4274.1611328125,
+          362.7232360839844
+        ],
+        "rotation": [
+          0.36997082829475403,
+          -0.00881958194077015,
+          -170.23513793945312
+        ],
+        "extent": [
+          2.782914400100708,
+          1.0749834775924683,
+          1.0225735902786255
+        ],
+        "has_world2ego": false,
+        "has_world2vehicle": true,
+        "has_speed": true,
+        "all_fields": [
+          "class",
+          "state",
+          "id",
+          "location",
+          "rotation",
+          "bbx_loc",
+          "center",
+          "extent",
+          "world_cord",
+          "semantic_tags",
+          "type_id",
+          "color",
+          "base_type",
+          "num_points",
+          "distance",
+          "speed",
+          "brake",
+          "light_state",
+          "road_id",
+          "lane_id",
+          "section_id",
+          "world2vehicle"
+        ]
+      },
+      {
+        "file": "/workspace/Bench2Drive-Base/VehicleTurningRoute_Town12_Route997_Weather9/anno/00522.json.gz",
+        "class": "vehicle",
+        "location": [
+          1604.8541259765625,
+          4272.3251953125,
+          362.80712890625
+        ],
+        "rotation": [
+          0.49509990215301514,
+          0.00077039934694767,
+          -170.8212127685547
+        ],
+        "extent": [
+          2.6787397861480713,
+          1.0166014432907104,
+          0.7053293585777283
+        ],
+        "has_world2ego": false,
+        "has_world2vehicle": true,
+        "has_speed": true,
+        "all_fields": [
+          "class",
+          "state",
+          "id",
+          "location",
+          "rotation",
+          "bbx_loc",
+          "center",
+          "extent",
+          "world_cord",
+          "semantic_tags",
+          "type_id",
+          "color",
+          "base_type",
+          "num_points",
+          "distance",
+          "speed",
+          "brake",
+          "light_state",
+          "road_id",
+          "lane_id",
+          "section_id",
+          "world2vehicle"
+        ]
+      },
+      {
+        "file": "/workspace/Bench2Drive-Base/VehicleTurningRoute_Town12_Route997_Weather9/anno/00421.json.gz",
+        "class": "vehicle",
+        "location": [
+          1663.1514892578125,
+          4318.9189453125,
+          362.78521728515625
+        ],
+        "rotation": [
+          -0.7369090914726257,
+          -0.004852263256907463,
+          -80.53055572509766
+        ],
+        "extent": [
+          2.5039126873016357,
+          0.9408109784126282,
+          0.7673624753952026
+        ],
+        "has_world2ego": false,
+        "has_world2vehicle": true,
+        "has_speed": true,
+        "all_fields": [
+          "class",
+          "state",
+          "id",
+          "location",
+          "rotation",
+          "bbx_loc",
+          "center",
+          "extent",
+          "world_cord",
+          "semantic_tags",
+          "type_id",
+          "color",
+          "base_type",
+          "num_points",
+          "distance",
+          "speed",
+          "brake",
+          "light_state",
+          "road_id",
+          "lane_id",
+          "section_id",
+          "world2vehicle"
+        ]
+      },
+      {
+        "file": "/workspace/Bench2Drive-Base/VehicleTurningRoute_Town12_Route997_Weather9/anno/00421.json.gz",
+        "class": "vehicle",
+        "location": [
+          1664.927978515625,
+          4308.1435546875,
+          362.661865234375
+        ],
+        "rotation": [
+          -0.8251346349716187,
+          -0.0006713491166010499,
+          -80.63484954833984
+        ],
+        "extent": [
+          2.4508416652679443,
+          1.0641621351242065,
+          0.7553732395172119
+        ],
+        "has_world2ego": false,
+        "has_world2vehicle": true,
+        "has_speed": true,
+        "all_fields": [
+          "class",
+          "state",
+          "id",
+          "location",
+          "rotation",
+          "bbx_loc",
+          "center",
+          "extent",
+          "world_cord",
+          "semantic_tags",
+          "type_id",
+          "color",
+          "base_type",
+          "num_points",
+          "distance",
+          "speed",
+          "brake",
+          "light_state",
+          "road_id",
+          "lane_id",
+          "section_id",
+          "world2vehicle"
+        ]
+      }
+    ],
+    "traffic_light": [
+      {
+        "file": "/workspace/Bench2Drive-Base/VehicleTurningRoute_Town12_Route997_Weather9/anno/00522.json.gz",
+        "class": "traffic_light",
+        "location": [
+          1662.0240478515625,
+          4283.7294921875,
+          368.1078796386719
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          -80.81168365478516
+        ],
+        "extent": [
+          0.15937499701976776,
+          0.14554686844348907,
+          0.5240625143051147
+        ],
+        "has_world2ego": false,
+        "has_world2vehicle": false,
+        "has_speed": false,
+        "all_fields": [
+          "class",
+          "id",
+          "location",
+          "rotation",
+          "center",
+          "extent",
+          "semantic_tags",
+          "type_id",
+          "distance",
+          "state",
+          "affects_ego",
+          "trigger_volume_location",
+          "trigger_volume_rotation",
+          "trigger_volume_extent",
+          "road_id",
+          "lane_id",
+          "section_id"
+        ]
+      },
+      {
+        "file": "/workspace/Bench2Drive-Base/VehicleTurningRoute_Town12_Route997_Weather9/anno/00522.json.gz",
+        "class": "traffic_light",
+        "location": [
+          1672.485595703125,
+          4284.31689453125,
+          368.1676330566406
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          99.18832397460938
+        ],
+        "extent": [
+          0.15937499701976776,
+          0.14554686844348907,
+          0.5240625143051147
+        ],
+        "has_world2ego": false,
+        "has_world2vehicle": false,
+        "has_speed": false,
+        "all_fields": [
+          "class",
+          "id",
+          "location",
+          "rotation",
+          "center",
+          "extent",
+          "semantic_tags",
+          "type_id",
+          "distance",
+          "state",
+          "affects_ego",
+          "trigger_volume_location",
+          "trigger_volume_rotation",
+          "trigger_volume_extent",
+          "road_id",
+          "lane_id",
+          "section_id"
+        ]
+      },
+      {
+        "file": "/workspace/Bench2Drive-Base/VehicleTurningRoute_Town12_Route997_Weather9/anno/00522.json.gz",
+        "class": "traffic_light",
+        "location": [
+          1666.943359375,
+          4289.2763671875,
+          368.19342041015625
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          -170.70814514160156
+        ],
+        "extent": [
+          0.1452343761920929,
+          0.1596093773841858,
+          0.5240625143051147
+        ],
+        "has_world2ego": false,
+        "has_world2vehicle": false,
+        "has_speed": false,
+        "all_fields": [
+          "class",
+          "id",
+          "location",
+          "rotation",
+          "center",
+          "extent",
+          "semantic_tags",
+          "type_id",
+          "distance",
+          "state",
+          "affects_ego",
+          "trigger_volume_location",
+          "trigger_volume_rotation",
+          "trigger_volume_extent",
+          "road_id",
+          "lane_id",
+          "section_id"
+        ]
+      },
+      {
+        "file": "/workspace/Bench2Drive-Base/VehicleTurningRoute_Town12_Route997_Weather9/anno/00522.json.gz",
+        "class": "traffic_light",
+        "location": [
+          1667.56591796875,
+          4278.76904296875,
+          368.0826416015625
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          9.291815757751465
+        ],
+        "extent": [
+          0.1452343761920929,
+          0.1596093773841858,
+          0.5240625143051147
+        ],
+        "has_world2ego": false,
+        "has_world2vehicle": false,
+        "has_speed": false,
+        "all_fields": [
+          "class",
+          "id",
+          "location",
+          "rotation",
+          "center",
+          "extent",
+          "semantic_tags",
+          "type_id",
+          "distance",
+          "state",
+          "affects_ego",
+          "trigger_volume_location",
+          "trigger_volume_rotation",
+          "trigger_volume_extent",
+          "road_id",
+          "lane_id",
+          "section_id"
+        ]
+      },
+      {
+        "file": "/workspace/Bench2Drive-Base/VehicleTurningRoute_Town12_Route997_Weather9/anno/00421.json.gz",
+        "class": "traffic_light",
+        "location": [
+          1662.0240478515625,
+          4283.7294921875,
+          368.1078796386719
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          -80.81168365478516
+        ],
+        "extent": [
+          0.15937499701976776,
+          0.14554686844348907,
+          0.5240625143051147
+        ],
+        "has_world2ego": false,
+        "has_world2vehicle": false,
+        "has_speed": false,
+        "all_fields": [
+          "class",
+          "id",
+          "location",
+          "rotation",
+          "center",
+          "extent",
+          "semantic_tags",
+          "type_id",
+          "distance",
+          "state",
+          "affects_ego",
+          "trigger_volume_location",
+          "trigger_volume_rotation",
+          "trigger_volume_extent",
+          "road_id",
+          "lane_id",
+          "section_id"
+        ]
+      }
+    ],
+    "traffic_sign": [
+      {
+        "file": "/workspace/Bench2Drive-Base/VehicleTurningRoute_Town12_Route997_Weather9/anno/00522.json.gz",
+        "class": "traffic_sign",
+        "location": [
+          1674.4053955078125,
+          4268.24951171875,
+          364.38287353515625
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          10.000066757202148
+        ],
+        "extent": [
+          0.4216393828392029,
+          0.024460453540086746,
+          0.8112266063690186
+        ],
+        "has_world2ego": false,
+        "has_world2vehicle": false,
+        "has_speed": false,
+        "all_fields": [
+          "class",
+          "id",
+          "location",
+          "rotation",
+          "center",
+          "extent",
+          "semantic_tags",
+          "type_id",
+          "distance",
+          "affects_ego",
+          "trigger_volume_location",
+          "trigger_volume_rotation",
+          "trigger_volume_extent",
+          "road_id",
+          "lane_id",
+          "section_id",
+          "world2sign"
+        ]
+      },
+      {
+        "file": "/workspace/Bench2Drive-Base/VehicleTurningRoute_Town12_Route997_Weather9/anno/00522.json.gz",
+        "class": "traffic_sign",
+        "location": [
+          1678.4554443359375,
+          4186.98779296875,
+          363.30078125
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          -169.9999237060547
+        ],
+        "extent": [
+          0.4216393828392029,
+          0.024460453540086746,
+          0.8112266063690186
+        ],
+        "has_world2ego": false,
+        "has_world2vehicle": false,
+        "has_speed": false,
+        "all_fields": [
+          "class",
+          "id",
+          "location",
+          "rotation",
+          "center",
+          "extent",
+          "semantic_tags",
+          "type_id",
+          "distance",
+          "affects_ego",
+          "trigger_volume_location",
+          "trigger_volume_rotation",
+          "trigger_volume_extent",
+          "road_id",
+          "lane_id",
+          "section_id",
+          "world2sign"
+        ]
+      },
+      {
+        "file": "/workspace/Bench2Drive-Base/VehicleTurningRoute_Town12_Route997_Weather9/anno/00522.json.gz",
+        "class": "traffic_sign",
+        "location": [
+          1659.6513671875,
+          4303.453125,
+          364.9068603515625
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          -169.9999237060547
+        ],
+        "extent": [
+          0.4216393828392029,
+          0.024460453540086746,
+          0.8112266063690186
+        ],
+        "has_world2ego": false,
+        "has_world2vehicle": false,
+        "has_speed": false,
+        "all_fields": [
+          "class",
+          "id",
+          "location",
+          "rotation",
+          "center",
+          "extent",
+          "semantic_tags",
+          "type_id",
+          "distance",
+          "affects_ego",
+          "trigger_volume_location",
+          "trigger_volume_rotation",
+          "trigger_volume_extent",
+          "road_id",
+          "lane_id",
+          "section_id",
+          "world2sign"
+        ]
+      },
+      {
+        "file": "/workspace/Bench2Drive-Base/VehicleTurningRoute_Town12_Route997_Weather9/anno/00522.json.gz",
+        "class": "traffic_sign",
+        "location": [
+          1643.180908203125,
+          4275.5947265625,
+          364.8216857910156
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          -82.49998474121094
+        ],
+        "extent": [
+          0.4216393828392029,
+          0.024460453540086746,
+          0.8112266063690186
+        ],
+        "has_world2ego": false,
+        "has_world2vehicle": false,
+        "has_speed": false,
+        "all_fields": [
+          "class",
+          "id",
+          "location",
+          "rotation",
+          "center",
+          "extent",
+          "semantic_tags",
+          "type_id",
+          "distance",
+          "affects_ego",
+          "trigger_volume_location",
+          "trigger_volume_rotation",
+          "trigger_volume_extent",
+          "road_id",
+          "lane_id",
+          "section_id",
+          "world2sign"
+        ]
+      },
+      {
+        "file": "/workspace/Bench2Drive-Base/VehicleTurningRoute_Town12_Route997_Weather9/anno/00522.json.gz",
+        "class": "traffic_sign",
+        "location": [
+          1687.1102294921875,
+          4291.84912109375,
+          364.45892333984375
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          97.5
+        ],
+        "extent": [
+          0.4216393828392029,
+          0.024460453540086746,
+          0.8112266063690186
+        ],
+        "has_world2ego": false,
+        "has_world2vehicle": false,
+        "has_speed": false,
+        "all_fields": [
+          "class",
+          "id",
+          "location",
+          "rotation",
+          "center",
+          "extent",
+          "semantic_tags",
+          "type_id",
+          "distance",
+          "affects_ego",
+          "trigger_volume_location",
+          "trigger_volume_rotation",
+          "trigger_volume_extent",
+          "road_id",
+          "lane_id",
+          "section_id",
+          "world2sign"
+        ]
+      }
+    ],
+    "walker": [
+      {
+        "file": "/workspace/Bench2Drive-Base/VehicleTurningRoutePedestrian_Town13_Route680_Weather10/anno/00018.json.gz",
+        "class": "walker",
+        "location": [
+          2998.968017578125,
+          3144.58740234375,
+          183.43165588378906
+        ],
+        "rotation": [
+          0.6692560315132141,
+          0.0,
+          -88.89421844482422
+        ],
+        "extent": [
+          0.18767888844013214,
+          0.18767888844013214,
+          0.6499999761581421
+        ],
+        "has_world2ego": false,
+        "has_world2vehicle": false,
+        "has_speed": true,
+        "all_fields": [
+          "class",
+          "id",
+          "location",
+          "rotation",
+          "bbx_loc",
+          "center",
+          "extent",
+          "world_cord",
+          "semantic_tags",
+          "type_id",
+          "gender",
+          "age",
+          "num_points",
+          "distance",
+          "speed",
+          "bone",
+          "road_id",
+          "lane_id",
+          "section_id",
+          "world2ped"
+        ]
+      },
+      {
+        "file": "/workspace/Bench2Drive-Base/VehicleTurningRoutePedestrian_Town13_Route680_Weather10/anno/00065.json.gz",
+        "class": "walker",
+        "location": [
+          2998.968017578125,
+          3144.58740234375,
+          183.43165588378906
+        ],
+        "rotation": [
+          0.6692560315132141,
+          0.0,
+          -88.89421844482422
+        ],
+        "extent": [
+          0.18767888844013214,
+          0.18767888844013214,
+          0.6499999761581421
+        ],
+        "has_world2ego": false,
+        "has_world2vehicle": false,
+        "has_speed": true,
+        "all_fields": [
+          "class",
+          "id",
+          "location",
+          "rotation",
+          "bbx_loc",
+          "center",
+          "extent",
+          "world_cord",
+          "semantic_tags",
+          "type_id",
+          "gender",
+          "age",
+          "num_points",
+          "distance",
+          "speed",
+          "bone",
+          "road_id",
+          "lane_id",
+          "section_id",
+          "world2ped"
+        ]
+      },
+      {
+        "file": "/workspace/Bench2Drive-Base/VehicleTurningRoutePedestrian_Town13_Route680_Weather10/anno/00105.json.gz",
+        "class": "walker",
+        "location": [
+          2999.026611328125,
+          3139.891845703125,
+          183.21376037597656
+        ],
+        "rotation": [
+          -24.785791397094727,
+          -4.089966773986816,
+          -81.83668518066406
+        ],
+        "extent": [
+          0.18767888844013214,
+          0.18767888844013214,
+          0.6499999761581421
+        ],
+        "has_world2ego": false,
+        "has_world2vehicle": false,
+        "has_speed": true,
+        "all_fields": [
+          "class",
+          "id",
+          "location",
+          "rotation",
+          "bbx_loc",
+          "center",
+          "extent",
+          "world_cord",
+          "semantic_tags",
+          "type_id",
+          "gender",
+          "age",
+          "num_points",
+          "distance",
+          "speed",
+          "bone",
+          "road_id",
+          "lane_id",
+          "section_id",
+          "world2ped"
+        ]
+      },
+      {
+        "file": "/workspace/Bench2Drive-Base/VehicleTurningRoutePedestrian_Town13_Route680_Weather10/anno/00064.json.gz",
+        "class": "walker",
+        "location": [
+          2998.968017578125,
+          3144.58740234375,
+          183.43165588378906
+        ],
+        "rotation": [
+          0.6692560315132141,
+          0.0,
+          -88.89421844482422
+        ],
+        "extent": [
+          0.18767888844013214,
+          0.18767888844013214,
+          0.6499999761581421
+        ],
+        "has_world2ego": false,
+        "has_world2vehicle": false,
+        "has_speed": true,
+        "all_fields": [
+          "class",
+          "id",
+          "location",
+          "rotation",
+          "bbx_loc",
+          "center",
+          "extent",
+          "world_cord",
+          "semantic_tags",
+          "type_id",
+          "gender",
+          "age",
+          "num_points",
+          "distance",
+          "speed",
+          "bone",
+          "road_id",
+          "lane_id",
+          "section_id",
+          "world2ped"
+        ]
+      },
+      {
+        "file": "/workspace/Bench2Drive-Base/VehicleTurningRoutePedestrian_Town13_Route680_Weather10/anno/00055.json.gz",
+        "class": "walker",
+        "location": [
+          2998.968017578125,
+          3144.58740234375,
+          183.43165588378906
+        ],
+        "rotation": [
+          0.6692560315132141,
+          0.0,
+          -88.89421844482422
+        ],
+        "extent": [
+          0.18767888844013214,
+          0.18767888844013214,
+          0.6499999761581421
+        ],
+        "has_world2ego": false,
+        "has_world2vehicle": false,
+        "has_speed": true,
+        "all_fields": [
+          "class",
+          "id",
+          "location",
+          "rotation",
+          "bbx_loc",
+          "center",
+          "extent",
+          "world_cord",
+          "semantic_tags",
+          "type_id",
+          "gender",
+          "age",
+          "num_points",
+          "distance",
+          "speed",
+          "bone",
+          "road_id",
+          "lane_id",
+          "section_id",
+          "world2ped"
+        ]
+      }
+    ]
+  },
+  "ego_vehicle_count": 247656,
+  "files_with_numeric_classes": 0,
+  "files_with_string_classes": 247656,
+  "mixed_class_files": 0,
+  "pedestrian_data": {
+    "found": true,
+    "count": 16302,
+    "formats": [
+      "string_walker"
+    ]
+  },
+  "carla_numeric_classes_found": [],
+  "unknown_classes": []
+}

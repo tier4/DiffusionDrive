@@ -117,16 +117,35 @@ navsim_workspace
 logs/
 *.bin
 *.npy
+bin/
 
 # Claude-related files
 .claude/
+CLAUDE.md
 
 # Downloaded dataset files
 *.tgz
 *.tar.gz
 download/openscene-v1.1/
+download/*.json
 
 # Personal/local configuration files
 .local/
 *.local
 *.personal
+
+# debug
+debug/
+# Ignore output directories and files
+output*/
+output_*/
+
+# Ignore backup files
+*.backup
+*.backup[0-9]
+*.backup[0-9][0-9]
+
+CLAUDE.md
+
+# Temporary debug files
+/temp_debug_files/

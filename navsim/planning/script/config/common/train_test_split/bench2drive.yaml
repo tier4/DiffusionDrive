@@ -1,0 +1,33 @@
+# Bench2Drive dataset configuration
+
+# Dataset type identifier for cache-only training
+dataset_type: bench2drive
+
+# NOTE: This configuration is used for cache-only training.
+# Scenario splits are determined by bench2drive_base_train_val_split.json
+# when use_cache_without_dataset=True
+
+# Scene filter for compatibility with NAVSIM structure
+scene_filter:
+  _target_: navsim.common.dataclasses.SceneFilter
+  _convert_: all
+  log_names: null # Use all available scenarios
+  tokens: null
+  num_frames: 9 # 4.5 seconds at 2Hz (0 history + 1 current + 8 future)
+  num_history_frames: 0  # No history needed for trajectory prediction
+  num_future_frames: 8  # 8 future waypoints at 0.5s intervals = 4 seconds
+  frame_interval: 1 # Already downsampled in loader
+  has_route: true
+  max_scenes: null
+
+# Bench2Drive specific settings (minimal config for cache-only training)
+bench2drive:
+  _target_: navsim.common.bench2drive_dataloader.Bench2DriveDataConfig
+  # data_root is not needed for cache-only training
+  sampling_rate: 5 # Downsample from 10Hz to 2Hz
+  num_frames: ${scene_filter.num_frames}
+  num_history_frames: ${scene_filter.num_history_frames}
+  num_future_frames: ${scene_filter.num_future_frames}
+  extract_tar: false # Not needed for cache-only training
+  # DEPRECATED: 10Hz sliding window mode removed to simplify codebase
+  # sliding_mode: true # Use true sliding window through all 10Hz frames

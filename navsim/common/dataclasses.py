@@ -111,7 +111,9 @@ class Lidar:
             return io.BytesIO(fp.read())
 
     @classmethod
-    def from_paths(cls, sensor_blobs_path: Path, lidar_path: Path, sensor_names: List[str]) -> Lidar:
+    def from_paths(
+        cls, sensor_blobs_path: Path, lidar_path: Path, sensor_names: List[str]
+    ) -> Lidar:
         """
         Loads lidar point cloud dataclass in log loading.
         :param sensor_blobs_path: root directory to sensor data
@@ -123,7 +125,9 @@ class Lidar:
         # NOTE: this could be extended to load specific LiDARs in the merged pc
         if "lidar_pc" in sensor_names:
             global_lidar_path = sensor_blobs_path / lidar_path
-            lidar_pc = LidarPointCloud.from_buffer(cls._load_bytes(global_lidar_path), "pcd").points
+            lidar_pc = LidarPointCloud.from_buffer(
+                cls._load_bytes(global_lidar_path), "pcd"
+            ).points
             return Lidar(lidar_pc)
         return Lidar()  # empty lidar
 
@@ -179,6 +183,7 @@ class AgentInput:
             StateSE2(*global_ego_poses[-1]), np.array(global_ego_poses, dtype=np.float64)
         )
 
+        # TODO: Camera type is werid, need to check later
         ego_statuses: List[EgoStatus] = []
         cameras: List[EgoStatus] = []
         lidars: List[Lidar] = []
@@ -238,10 +243,14 @@ class Trajectory:
     """Trajectory dataclass in NAVSIM."""
 
     poses: npt.NDArray[np.float32]  # local coordinates
-    trajectory_sampling: TrajectorySampling = TrajectorySampling(time_horizon=4, interval_length=0.5)
+    trajectory_sampling: TrajectorySampling = TrajectorySampling(
+        time_horizon=4, interval_length=0.5
+    )
 
     def __post_init__(self):
-        assert self.poses.ndim == 2, "Trajectory poses should have two dimensions for samples and poses."
+        assert (
+            self.poses.ndim == 2
+        ), "Trajectory poses should have two dimensions for samples and poses."
         assert (
             self.poses.shape[0] == self.trajectory_sampling.num_poses
         ), "Trajectory poses and sampling have unequal number of poses."
@@ -328,7 +337,9 @@ class Scene:
             global_ego_poses.append(self.frames[frame_idx].ego_status.ego_pose)
 
         origin = StateSE2(*global_ego_poses[-1])
-        local_ego_poses = convert_absolute_to_relative_se2_array(origin, np.array(global_ego_poses, dtype=np.float64))
+        local_ego_poses = convert_absolute_to_relative_se2_array(
+            origin, np.array(global_ego_poses, dtype=np.float64)
+        )
 
         return Trajectory(
             local_ego_poses,
@@ -368,7 +379,9 @@ class Scene:
     @classmethod
     def _build_map_api(cls, map_name: str) -> AbstractMap:
         """Helper classmethod to load map api from name."""
-        assert map_name in MAP_LOCATIONS, f"The map name {map_name} is invalid, must be in {MAP_LOCATIONS}"
+        assert (
+            map_name in MAP_LOCATIONS
+        ), f"The map name {map_name} is invalid, must be in {MAP_LOCATIONS}"
         return get_maps_api(NUPLAN_MAPS_ROOT, "nuplan-maps-v1.0", map_name)
 
     @classmethod
@@ -482,8 +495,12 @@ class SceneFilter:
         if self.frame_interval is None:
             self.frame_interval = self.num_frames
 
-        assert self.num_history_frames >= 1, "SceneFilter: num_history_frames must greater equal one."
-        assert self.num_future_frames >= 0, "SceneFilter: num_future_frames must greater equal zero."
+        assert (
+            self.num_history_frames >= 1
+        ), "SceneFilter: num_history_frames must greater equal one."
+        assert (
+            self.num_future_frames >= 0
+        ), "SceneFilter: num_future_frames must greater equal zero."
         assert self.frame_interval >= 1, "SceneFilter: frame_interval must greater equal one."
 
     @property
