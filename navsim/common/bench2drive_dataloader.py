@@ -14,7 +14,7 @@ import numpy as np
 
 
 @dataclass
-class Bench2DriveConfig:
+class Bench2DriveDataConfig:
     """Configuration for Bench2Drive dataset loading."""
 
     data_root: Path
@@ -40,7 +40,7 @@ class Bench2DriveSceneLoader:
 
     def __init__(
         self,
-        config: Bench2DriveConfig,
+        config: Bench2DriveDataConfig,
         planner: Optional[any] = None,
         trajectory_sampling: Optional[any] = None,
     ):

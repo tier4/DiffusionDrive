@@ -23,7 +23,7 @@ class Bench2DriveConfig(TransfuserConfig):
     pixels_per_meter: float = 4.0
 
     # Override default anchor paths with correct locations
-    plan_anchor_path: str = "/workspace/DiffusionDrive/download/kmeans_navsim_traj_20.npy"
+    plan_anchor_path: str = "/mnt/nvme1/diffusiondrive/weights/kmeans_b2d_v2_traj_20.npy"
 
     # Trajectory normalization parameters
     # NavSim ranges (default)

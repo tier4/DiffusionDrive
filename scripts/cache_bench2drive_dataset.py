@@ -279,17 +279,20 @@ def cache_bench2drive_dataset(
     logger.info(f"Average time per scene: {elapsed_time / len(all_tokens):.2f} seconds")
 
     if failed_scenes:
-        logger.error(f"Failed to cache {len(failed_scenes)} scenes:")
-        for token, error in failed_scenes[:10]:  # Show first 10 errors
-            logger.error(f"  {token}: {error}")
-        if len(failed_scenes) > 10:
-            logger.error(f"  ... and {len(failed_scenes) - 10} more errors")
+        skipped = [(t, e) for t, e in failed_scenes if "Skipped:" in str(e)]
+        real_errors = [(t, e) for t, e in failed_scenes if "Skipped:" not in str(e)]
 
-        # Raise exception to fail the process
-        raise RuntimeError(
-            f"Dataset caching failed: {len(failed_scenes)} scenes could not be processed. "
-            f"See errors above for details."
-        )
+        if skipped:
+            logger.info(f"Filtered {len(skipped)} scenes (expected — no valid agents or zero trajectory)")
+
+        if real_errors:
+            logger.error(f"Failed to cache {len(real_errors)} scenes:")
+            for token, error in real_errors[:10]:
+                logger.error(f"  {token}: {error}")
+            raise RuntimeError(
+                f"Dataset caching failed: {len(real_errors)} scenes could not be processed. "
+                f"See errors above for details."
+            )
 
 
 def main():

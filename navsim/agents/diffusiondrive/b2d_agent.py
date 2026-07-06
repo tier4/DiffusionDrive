@@ -26,13 +26,14 @@ class Bench2DriveAgent(TransfuserAgent):
         """Initialize with B2D config for normalization support."""
         self._b2d_config = config
         super().__init__(config, lr, checkpoint_path)
-
-    def _build_model(self) -> V2TransfuserModelWrapper:
-        """Build model using the wrapper for normalization."""
+        # super().__init__ creates a plain V2TransfuserModel — replace it with
+        # the wrapper that registers B2D-specific normalization buffers.
         logger.info(
-            f"[Bench2DriveAgent] Building model with config: dataset_type={self._b2d_config.dataset_type}"
+            f"[Bench2DriveAgent] Replacing model with B2D wrapper: "
+            f"dataset_type={self._b2d_config.dataset_type}"
         )
-        return V2TransfuserModelWrapper(self._b2d_config)
+        self._transfuser_model = V2TransfuserModelWrapper(self._b2d_config)
+        self.init_from_pretrained()
 
     def get_feature_builders(self) -> List[AbstractFeatureBuilder]:
         """Return Bench2Drive feature builders."""

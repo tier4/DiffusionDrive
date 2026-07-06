@@ -4,7 +4,7 @@ Bench2Drive scene representation for CARLA-native training.
 
 from navsim.common.dataclasses import AgentInput, EgoStatus
 from navsim.common.bench2drive_dataloader import (
-    Bench2DriveConfig,
+    Bench2DriveDataConfig,
     load_bench2drive_annotation,
     map_carla_command_to_discrete,
 )
@@ -18,6 +18,7 @@ from navsim.common.bench2drive_constants import (
     MAX_AGENTS,
     BENCH2DRIVE_LIDAR_RANGE_M,
     FUTURE_TRAJECTORY_FRAME_STRIDE,
+    COLLISION_EVAL_RANGE_M,
 )
 from navsim.common.bev_map_utils import (
     transform_points_to_ego,
@@ -65,7 +66,7 @@ class Bench2DriveScene:
     def __init__(
         self,
         scene_info: Dict,
-        config: Bench2DriveConfig,
+        config: Bench2DriveDataConfig,
         planner: Optional[any] = None,
         trajectory_sampling: Optional[any] = None,
     ):
@@ -714,6 +715,165 @@ class Bench2DriveScene:
 
         return torch.tensor(trajectory, dtype=torch.float64)
 
+    def _extract_agents_from_anno(
+        self,
+        anno: dict,
+        ego_points: np.ndarray,
+        ego_heading_rad: float,
+        max_distance: float,
+        use_anno_distance: bool,
+    ):
+        """Extract agent states from one annotation, in the frame of the
+        given ego pose (which need not be the annotation's own frame).
+
+        Args:
+            max_distance: keep agents within this distance of the ego pose.
+            use_anno_distance: if True, filter on the annotation's precomputed
+                obj["distance"] (distance to the annotation frame's OWN ego) —
+                the historical get_agents behavior. If False, filter on the
+                ego-centric planar distance to the GIVEN ego pose (correct for
+                future-frame agents relative to the current ego).
+        """
+        # Process vehicles from bounding_boxes
+        max_agents = MAX_AGENTS  # Maximum number of agents to track
+        agent_states = np.zeros((max_agents, 5), dtype=np.float32)
+        agent_labels = np.zeros(max_agents, dtype=bool)
+        agent_types = np.zeros(max_agents, dtype=np.int32)  # NavSim class IDs
+
+        bboxes = anno["bounding_boxes"]  # Required field - fail fast if missing
+        agent_idx = 0
+
+        # Normalize bboxes format and process objects uniformly
+        objects_to_process = []
+
+        if isinstance(bboxes, list):
+            # List format (Bench2Drive mini dataset)
+            for obj in bboxes:
+                obj_class = obj["class"]  # Required field - fail fast if missing
+
+                # Skip ego vehicle and traffic elements
+                if obj_class == "ego_vehicle":
+                    continue
+                if obj_class in ["traffic_light", "traffic_sign"]:
+                    continue  # Already drawn on static BEV maps
+
+                # Only process vehicles and pedestrians (dynamic objects)
+                if obj_class in ["vehicle", "walker"]:
+                    navsim_class = B2D_CLASS_TO_NAVSIM[obj_class]
+                    objects_to_process.append((obj, obj_class, navsim_class))
+
+        elif isinstance(bboxes, dict):
+            # Dict format (original expected format)
+            ego_id = bboxes.get("ego_vehicle", {}).get("id")
+            for obj_type in ["vehicle", "walker"]:  # Fixed: pedestrians are "walker"
+                if obj_type in bboxes:
+                    navsim_class = B2D_CLASS_TO_NAVSIM[obj_type]
+                    for obj in bboxes[obj_type]:
+                        # Skip ego vehicle
+                        if obj.get("id") == ego_id:
+                            continue
+                        objects_to_process.append((obj, obj_type, navsim_class))
+
+        # Nearest-first selection for the eval path only (use_anno_distance=False).
+        # Raw bounding_boxes order can silently drop a nearby colliding agent in
+        # dense frames once MAX_AGENTS is hit; sorting by distance first ensures
+        # the closest agents are kept. The training path (use_anno_distance=True)
+        # must keep the original iteration order and behavior exactly.
+        if not use_anno_distance:
+            candidate_distances = []
+            for obj, obj_class, navsim_class in objects_to_process:
+                obj_center = obj["center"]
+                obj_world_pos = np.array([[obj_center[0], obj_center[1], obj_center[2]]])
+                ego_coords = transform_points_to_ego(
+                    obj_world_pos, ego_points, ego_heading_rad, left_to_right=False
+                )
+                candidate_distances.append(
+                    float(np.hypot(ego_coords[0, 0], ego_coords[0, 1]))
+                )
+
+            order = np.argsort(candidate_distances, kind="stable")
+            objects_to_process = [objects_to_process[i] for i in order]
+            sorted_distances = [candidate_distances[i] for i in order]
+
+            num_within_range = sum(1 for d in sorted_distances if d <= max_distance)
+            num_kept = min(num_within_range, max_agents)
+            num_dropped = max(0, num_within_range - max_agents)
+            if num_dropped > 0:
+                logger.debug(
+                    f"_extract_agents_from_anno: kept {num_kept} agents, "
+                    f"dropped {num_dropped} agents within max_distance={max_distance}m "
+                    f"(nearest-first selection, MAX_AGENTS={max_agents})"
+                )
+
+        # Process all objects with unified logic
+        for obj, obj_class, navsim_class in objects_to_process:
+            if agent_idx >= max_agents:
+                break
+
+            # Use center coordinates for reliable world position (comprehensive fix plan)
+            obj_center = obj["center"]  # [x, y, z] in world coordinates
+            obj_world_pos = np.array([[obj_center[0], obj_center[1], obj_center[2]]])
+
+            # Transform to ego coordinates using standard function
+            ego_coords = transform_points_to_ego(
+                obj_world_pos, ego_points, ego_heading_rad, left_to_right=False
+            )
+            ego_centric_x = ego_coords[0, 0]
+            ego_centric_y = ego_coords[0, 1]
+
+            # Use annotation distance instead of manual calculation (comprehensive fix plan)
+            if use_anno_distance:
+                distance = obj["distance"]  # to the annotation frame's own ego
+            else:
+                distance = float(np.hypot(ego_centric_x, ego_centric_y))
+            # Key difference: B2D uses circular filtering vs NAVSIM's square region.
+            # max_distance is caller-parameterized (e.g. BENCH2DRIVE_LIDAR_RANGE_M / 2
+            # for training, COLLISION_EVAL_RANGE_M for eval) — not a fixed 42.5m.
+            if distance > max_distance:
+                continue  # This provides 360° coverage unlike NAVSIM's frontal-focused square
+
+            # Extract rotation and convert to ego-centric using simpler angle subtraction
+            rotation = obj["rotation"]  # Required field - fail fast if missing
+            if isinstance(rotation, list):
+                obj_yaw_degrees = rotation[2]  # Yaw is at index 2: [pitch, roll, yaw]
+            else:
+                obj_yaw_degrees = rotation["yaw"]  # Dict format
+            # Transform heading to ego-centric coordinates with normalization
+            obj_yaw_rad = np.radians(obj_yaw_degrees)
+            ego_centric_yaw = transform_heading_to_ego(
+                obj_yaw_rad, ego_heading_rad, normalize=True
+            )
+
+            # Extract size from extent field (comprehensive fix plan)
+            extent = obj["extent"]  # Required field - fail fast if missing
+            if isinstance(extent, list):
+                # extent = [half_length, half_width, half_height]
+                length = 2 * extent[0]  # Full length = 2 * half_length
+                width = 2 * extent[1]  # Full width = 2 * half_width
+            else:
+                # Dict format: extent = {"x": half_length, "y": half_width, "z": half_height}
+                length = 2 * extent["x"]  # Full length = 2 * half_length
+                width = 2 * extent["y"]  # Full width = 2 * half_width
+
+            # Apply size limits for pedestrians to prevent unrealistic dimensions
+            if navsim_class == 6:  # Pedestrian
+                length = min(length, 0.8)  # Cap pedestrian length
+                width = min(width, 0.6)  # Cap pedestrian width
+
+            # Store agent state
+            agent_states[agent_idx] = [
+                ego_centric_x,
+                ego_centric_y,
+                ego_centric_yaw,
+                length,
+                width,
+            ]
+            agent_labels[agent_idx] = True
+            agent_types[agent_idx] = navsim_class
+            agent_idx += 1
+
+        return agent_states, agent_labels, agent_types
+
     def get_agents(self, frame_idx: int = -1) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Get other agents' states and labels.
@@ -767,113 +927,75 @@ class Bench2DriveScene:
         ego_heading_deg = ego_box["rotation"][2]  # Current ego heading in degrees
         ego_heading_rad = normalize_angle(np.radians(ego_heading_deg))
 
-        # Process vehicles from bounding_boxes
-        max_agents = MAX_AGENTS  # Maximum number of agents to track
-        agent_states = np.zeros((max_agents, 5), dtype=np.float32)
-        agent_labels = np.zeros(max_agents, dtype=bool)
-        agent_types = np.zeros(max_agents, dtype=np.int32)  # NavSim class IDs
-
-        bboxes = anno["bounding_boxes"]  # Required field - fail fast if missing
-        agent_idx = 0
-
-        # Normalize bboxes format and process objects uniformly
-        objects_to_process = []
-
-        if isinstance(bboxes, list):
-            # List format (Bench2Drive mini dataset)
-            for obj in bboxes:
-                obj_class = obj["class"]  # Required field - fail fast if missing
-
-                # Skip ego vehicle and traffic elements
-                if obj_class == "ego_vehicle":
-                    continue
-                if obj_class in ["traffic_light", "traffic_sign"]:
-                    continue  # Already drawn on static BEV maps
-
-                # Only process vehicles and pedestrians (dynamic objects)
-                if obj_class in ["vehicle", "walker"]:
-                    navsim_class = B2D_CLASS_TO_NAVSIM[obj_class]
-                    objects_to_process.append((obj, obj_class, navsim_class))
-
-        elif isinstance(bboxes, dict):
-            # Dict format (original expected format)
-            ego_id = bboxes.get("ego_vehicle", {}).get("id")
-            for obj_type in ["vehicle", "walker"]:  # Fixed: pedestrians are "walker"
-                if obj_type in bboxes:
-                    navsim_class = B2D_CLASS_TO_NAVSIM[obj_type]
-                    for obj in bboxes[obj_type]:
-                        # Skip ego vehicle
-                        if obj.get("id") == ego_id:
-                            continue
-                        objects_to_process.append((obj, obj_type, navsim_class))
-
-        # Process all objects with unified logic
-        for obj, obj_class, navsim_class in objects_to_process:
-            if agent_idx >= max_agents:
-                break
-
-            # Use center coordinates for reliable world position (comprehensive fix plan)
-            obj_center = obj["center"]  # [x, y, z] in world coordinates
-            obj_world_pos = np.array([[obj_center[0], obj_center[1], obj_center[2]]])
-
-            # Transform to ego coordinates using standard function
-            ego_coords = transform_points_to_ego(
-                obj_world_pos, ego_points, ego_heading_rad, left_to_right=False
-            )
-            ego_centric_x = ego_coords[0, 0]
-            ego_centric_y = ego_coords[0, 1]
-
-            # Use annotation distance instead of manual calculation (comprehensive fix plan)
-            distance = obj["distance"]  # Pre-calculated distance to ego
-            # Key difference: B2D uses circular filtering (42.5m radius) vs NAVSIM's square region
-            if distance > BENCH2DRIVE_LIDAR_RANGE_M / 2:  # 42.5m from 85m diameter
-                continue  # This provides 360° coverage unlike NAVSIM's frontal-focused square
-
-            # Extract rotation and convert to ego-centric using simpler angle subtraction
-            rotation = obj["rotation"]  # Required field - fail fast if missing
-            if isinstance(rotation, list):
-                obj_yaw_degrees = rotation[2]  # Yaw is at index 2: [pitch, roll, yaw]
-            else:
-                obj_yaw_degrees = rotation["yaw"]  # Dict format
-            # Transform heading to ego-centric coordinates with normalization
-            obj_yaw_rad = np.radians(obj_yaw_degrees)
-            ego_centric_yaw = transform_heading_to_ego(
-                obj_yaw_rad, ego_heading_rad, normalize=True
-            )
-
-            # Extract size from extent field (comprehensive fix plan)
-            extent = obj["extent"]  # Required field - fail fast if missing
-            if isinstance(extent, list):
-                # extent = [half_length, half_width, half_height]
-                length = 2 * extent[0]  # Full length = 2 * half_length
-                width = 2 * extent[1]  # Full width = 2 * half_width
-            else:
-                # Dict format: extent = {"x": half_length, "y": half_width, "z": half_height}
-                length = 2 * extent["x"]  # Full length = 2 * half_length
-                width = 2 * extent["y"]  # Full width = 2 * half_width
-
-            # Apply size limits for pedestrians to prevent unrealistic dimensions
-            if navsim_class == 6:  # Pedestrian
-                length = min(length, 0.8)  # Cap pedestrian length
-                width = min(width, 0.6)  # Cap pedestrian width
-
-            # Store agent state
-            agent_states[agent_idx] = [
-                ego_centric_x,
-                ego_centric_y,
-                ego_centric_yaw,
-                length,
-                width,
-            ]
-            agent_labels[agent_idx] = True
-            agent_types[agent_idx] = navsim_class
-            agent_idx += 1
-
+        agent_states, agent_labels, agent_types = self._extract_agents_from_anno(
+            anno,
+            ego_points,
+            ego_heading_rad,
+            max_distance=BENCH2DRIVE_LIDAR_RANGE_M / 2,
+            use_anno_distance=True,
+        )
         return (
             torch.from_numpy(agent_states),
             torch.from_numpy(agent_labels),
             torch.from_numpy(agent_types),
         )
+
+    def get_future_agents(
+        self, frame_idx: int = -1, num_timesteps: int = NUM_FUTURE_WAYPOINTS
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Agent states at each future waypoint time, in the CURRENT ego frame.
+
+        Timestep t corresponds to the same future annotation frame as
+        get_future_trajectory waypoint t (same stride logic), so occupancy
+        grids align 1:1 with trajectory waypoints.
+
+        Returns:
+            agent_states: [T, MAX_AGENTS, 5] float32 (x, y, heading, length, width)
+            agent_labels: [T, MAX_AGENTS] bool
+        """
+        if frame_idx == -1:
+            frame_idx = max(0, self.history_frames - 1)
+
+        current_anno = self._load_annotation(frame_idx)
+        ego_box = None
+        for box in current_anno["bounding_boxes"]:
+            if box["class"] == "ego_vehicle":
+                ego_box = box
+                break
+        if ego_box is None:
+            raise ValueError(
+                f"Ego vehicle not found in bounding boxes for frame {frame_idx}"
+            )
+        ego_points = np.array(ego_box["center"])
+        ego_heading_rad = normalize_angle(np.radians(ego_box["rotation"][2]))
+
+        sampling_rate = getattr(self.config, "sampling_rate", 5)
+        if sampling_rate == 1:
+            frame_stride = FUTURE_TRAJECTORY_FRAME_STRIDE
+        elif sampling_rate == 5:
+            frame_stride = 1
+        else:
+            raise ValueError(f"Unsupported sampling_rate={sampling_rate}")
+
+        states = np.zeros((num_timesteps, MAX_AGENTS, 5), dtype=np.float32)
+        labels = np.zeros((num_timesteps, MAX_AGENTS), dtype=bool)
+        for t in range(num_timesteps):
+            future_idx = frame_idx + (t + 1) * frame_stride
+            if future_idx >= len(self.anno_paths):
+                # Callers must pair this with a valid get_future_trajectory
+                # check; remaining timesteps stay empty rather than fabricated.
+                break
+            anno = self._load_annotation(future_idx)
+            s, l, _ = self._extract_agents_from_anno(
+                anno,
+                ego_points,
+                ego_heading_rad,
+                max_distance=COLLISION_EVAL_RANGE_M,
+                use_anno_distance=False,
+            )
+            states[t], labels[t] = s, l
+
+        return torch.from_numpy(states), torch.from_numpy(labels)
 
     def get_bev_semantic_map(self, frame_idx: int = -1) -> torch.Tensor:
         """

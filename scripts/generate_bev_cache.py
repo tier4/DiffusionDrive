@@ -102,6 +102,8 @@ def worker_process_frame_ray(
         # Get the MapProcessor object from Ray's object store
         map_processor = ray.get(map_processor_refs[town_name])
 
+        from navsim.common.bench2drive_constants import BEV_SEMANTIC_RESOLUTION, BEV_SEMANTIC_RANGE_M
+
         # Create the appropriate generator based on type
         generator = BEVGeneratorFactory.create_generator(
             generation_type=generation_type,
@@ -121,9 +123,6 @@ def worker_process_frame_ray(
 
         # Extract front half for NavSim compatibility
         front_bev = extract_front_half_bev(full_bev)
-
-        # Save with generation type marker and metadata for cache validation
-        from navsim.common.bench2drive_constants import BEV_SEMANTIC_RESOLUTION, BEV_SEMANTIC_RANGE_M
         np.savez_compressed(
             output_path,
             full_bev=full_bev.astype(np.uint8),
