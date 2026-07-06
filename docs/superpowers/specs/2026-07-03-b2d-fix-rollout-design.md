@@ -144,6 +144,55 @@ collapse `run_bench2drive_training.py` into `run_training.py` via a Hydra `datas
 group; one naming convention (`bench2drive_` subpackage) in a mechanical rename commit.
 Do not start until OP completes and TaCarla work is scheduled.
 
+## Addendum (2026-07-07) — pre-merge review findings
+
+Source: 6-pass pre-merge review of `feature/bench2drive-dataset-support` vs `tier4-main`
+(4 Claude specialists + Claude adversarial + Codex cross-model), run before the merge to
+`tier4-main`. ~23 findings not covered by the branch tables above. Routing:
+
+### B1.5 · `fix/b2d-eval-metrics-followup` — cut anytime; REQUIRED before publishing collision numbers
+
+| Change | Where |
+|---|---|
+| The B1 merge gate was vacuous: with STP3 masking, GT-as-prediction yields collision ≡ 0 by construction (`pred_box ∧ ¬gt_box ≡ 0`), so it cannot detect broken occupancy wiring. Add an injected-known-collision integration test (stub model + 1-sample dataset, assert `col_0.5s > 0`) and/or a masking-disabled GT run | `b2d_planning_utils.py:230-246`, `run_b2d_openloop_eval.py` |
+| Agent filter is a 50 m **circle** but the metric grid is a ±50 m **square** (corners at 70.7 m): in-raster agents beyond 50 m radial are silently dropped from occupancy (false-negative collisions; undocumented parity deviation) | `bench2drive_scene.py:829`, `bench2drive_constants.py:25` |
+| Nearest-first overflow truncation (>MAX_AGENTS) sorts by distance to the **current** pose, so the agent at a far future waypoint can be the one dropped | `bench2drive_scene.py:782-806` |
+| `_compute_collision` pre-expands any ndim-3 array to 4-D, bypassing `get_label`'s ambiguous-shape guard (b4de8d1) on the primary path | `b2d_metrics.py:135-137` |
+| Deliver the B1-spec'd but never-written tests: rotated-agent occupancy (no non-zero heading exists in the metric test suite — a transposed rotation matrix would pass) and lateral box-only collision (`box_col=1, col=0`) | `tests/test_b2d_planning_utils.py`, `tests/test_b2d_metrics.py` |
+| `col_avg_full` (mean of flags ≡ `col_4.0s`) is a different statistic than `L2_avg_full` (mean of cumulative horizons) under the same suffix — rename or redefine | `b2d_metrics.py:163` |
+| Fail fast instead of silent degradation: `min(T)` horizon truncation, NaN/Inf trajectories (also `json.dump(..., allow_nan=False)`), `get_future_agents` zero-fill past scene end, `_box_collision_flags` heading=0 fallback for [T,2] input | `b2d_metrics.py:69`, `run_b2d_openloop_eval.py:383`, `bench2drive_scene.py:984-987`, `b2d_planning_utils.py:182` |
+| Zero-assertion test files pass unconditionally; wiring test asserts key presence only | `tests/test_heading_fix_simple.py`, `tests/test_heading_fix_integration.py`, `tests/test_eval_collision_wiring.py` |
+
+For the record: Codex's "wrong handedness mirrors collision boxes" claim was verified a
+**false positive** — trajectory and agent paths share one self-consistent left-handed
+convention through the same corner/rasterization code.
+
+### OP preconditions (add to the regen/retrain checklist)
+
+- **MUST FIX before regen:** `ray.init(num_cpus=num_workers)` runs while `num_workers` is
+  still `None` (cap applied only later) → Ray claims ALL host CPUs + ~30% RAM object store.
+  Resolve the capped default before `ray.init` and pass bounded `object_store_memory`
+  (`scripts/cache_bench2drive_dataset.py:153` vs `:217`).
+- Measure full-split eval peak RAM vs the 20 GB budget (defaults `num_workers=8`,
+  `batch_size=32`, `persistent_workers=True`); eval indexing re-decodes each anno ~18×
+  serially; per-scenario configs inherit `extract_tar=True`, so "read-only" eval can
+  extract stray tars as a write side effect.
+
+### B6 additions (hygiene/security)
+
+Remove `${HOME}/.ssh` mount from `docker/docker-compose.yml:41` (container deserializes
+third-party artifacts); remove silent `apt-get install` fallbacks from both visualization
+scripts (fail fast instead; `visualize_model_predictions.py:684`,
+`visualize_bench2drive_predictions.py:1162`); `torch.load(..., weights_only=True)` at the
+3 checkpoint-load sites; document the `allow_pickle=True` trust assumption for downloaded
+HD-map npz; make `pytest tests/` green on a fresh clone (stale `KeyError: 'center'` mock
+schemas, `tests/test_data` fixture lacks camera images its consumers require,
+dataset-dependent tests need skip markers); fix the CHANGELOG claim that left→right-handed
+conversion was implemented (it raises `NotImplementedError`); machine-path default in
+`run_b2d_openloop_eval.py:255` (add to the B3 path list); delete dead `sliding_mode` flag
+and the nine commented-out sliding-window fossil blocks; per-frame `print()` → logging in
+`get_bev_semantic_map`; unbounded frame accumulation in both video-rendering scripts.
+
 ## Resource safety — MANDATORY for every implementing agent
 
 Any agent executing a branch of this plan MUST treat RAM and disk as scarce and
