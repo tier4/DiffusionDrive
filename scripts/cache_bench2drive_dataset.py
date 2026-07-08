@@ -115,7 +115,7 @@ class SceneProcessor:
             return token, str(e)
 
 
-@ray.remote
+@ray.remote(num_cpus=0)
 def process_batch_sequential(
     processor: ray.ObjectRef, tokens: List[str], cache_path: Path, desc: str = "Processing batch"
 ) -> List[Tuple[str, Optional[str]]]:

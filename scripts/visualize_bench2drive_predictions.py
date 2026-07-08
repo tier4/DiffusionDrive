@@ -1107,7 +1107,7 @@ def create_mp4_from_scenes(
             print(f"  Scene {scene_idx + 1}/{num_to_process}: {token[:40]}...")
 
             # Get ALL frames in the scenario
-            prediction_frame = scene.history_frames - 1
+            prediction_frame = scene.history_frames
 
             # Show ALL frames in the scenario, not just around prediction
             start_frame = 0
