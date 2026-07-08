@@ -38,7 +38,6 @@ services:
     volumes:
       - "${WORKSPACE_DIR:-/home/chenglin/workspace}:/workspace"
       - "${DATA_DIR:-/mnt}:/mnt"
-      - "${HOME}/.ssh:/home/user/.ssh:ro"
     ulimits:
       memlock: -1
     depends_on:

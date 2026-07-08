@@ -64,9 +64,9 @@ class SceneProcessor:
             # Load scene
             scene = self.scene_loader.get_scene(token)
 
-            # Get agent input for the current frame (NavSim convention: num_history_frames - 1)
-            # This ensures features and BEV align with the same temporal position
-            current_frame_idx = self.config.num_history_frames - 1  # Frame 4 with 4 history frames
+            # Current frame = boundary between history and future.
+            # Must match the target builder (scene.history_frames == num_history_frames).
+            current_frame_idx = self.config.num_history_frames
             agent_input = scene.get_agent_input(current_frame_idx)
 
             # Compute features
@@ -148,9 +148,18 @@ def cache_bench2drive_dataset(
         num_workers: Number of parallel workers (None = auto)
         use_config_file: Whether to load parameters from bench2drive.yaml (default: True)
     """
-    # Initialize Ray if not already initialized
+    # Resolve worker cap BEFORE ray.init — otherwise Ray autodetects ALL host CPUs
+    # and reserves ~30% of system RAM for its object store.
+    if num_workers is None:
+        num_workers = min(os.cpu_count() or 4, 8)
+
+    # Initialize Ray with explicit resource limits (20 GB / 8 CPU budget)
     if not ray.is_initialized():
-        ray.init(num_cpus=num_workers)
+        max_object_store_mb = 4 * 1024  # 4 GB — well within the 20 GB budget
+        ray.init(
+            num_cpus=num_workers,
+            object_store_memory=max_object_store_mb * 1024 * 1024,
+        )
 
     # Create cache directory
     cache_path.mkdir(parents=True, exist_ok=True)
@@ -168,13 +177,13 @@ def cache_bench2drive_dataset(
         yaml_config = load_bench2drive_config()
         bench2drive_config = yaml_config.bench2drive
         scene_filter = yaml_config.scene_filter
-        
+
         logger.info(f"Using config from bench2drive.yaml:")
         logger.info(f"  sampling_rate: {bench2drive_config.sampling_rate}")
         logger.info(f"  num_frames: {bench2drive_config.num_frames}")
         logger.info(f"  num_history_frames: {bench2drive_config.num_history_frames}")
         logger.info(f"  num_future_frames: {bench2drive_config.num_future_frames}")
-        
+
         config = Bench2DriveDataConfig(
             data_root=data_root,
             scenarios=scenarios,
@@ -212,10 +221,6 @@ def cache_bench2drive_dataset(
 
     # Create model config
     model_config = TransfuserConfig()
-
-    # Determine number of workers
-    if num_workers is None:
-        num_workers = min(os.cpu_count() or 4, 8)  # Cap at 8 workers
 
     logger.info(f"Using {num_workers} parallel workers")
 

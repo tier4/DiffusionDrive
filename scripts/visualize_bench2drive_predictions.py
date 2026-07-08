@@ -539,7 +539,7 @@ def load_bench2drive_agent_from_checkpoint(
     agent.device = device
 
     # Load checkpoint info
-    checkpoint_data = torch.load(checkpoint_path, map_location="cpu")
+    checkpoint_data = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
     if "epoch" in checkpoint_data:
         print(f"  Loaded checkpoint from epoch: {checkpoint_data['epoch']}")
 
@@ -1158,9 +1158,9 @@ def create_mp4_from_scenes(
     # Check ffmpeg
     result = subprocess.run(["which", "ffmpeg"], capture_output=True, text=True)
     if result.returncode != 0:
-        print("⚠️  ffmpeg not found! Installing...")
-        subprocess.run(["apt-get", "update"], check=True)
-        subprocess.run(["apt-get", "install", "-y", "ffmpeg"], check=True)
+        raise RuntimeError(
+            "ffmpeg not found. Install it in your Docker image or run: apt-get install -y ffmpeg"
+        )
 
     # Convert GIF to MP4 with slower playback for visibility
     cmd = [
