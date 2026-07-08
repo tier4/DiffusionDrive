@@ -150,9 +150,8 @@ class Bench2DriveScene:
         Returns:
             AgentInput object with cameras, lidars, and ego statuses
         """
-        # Default to current frame (frame 0 when no history, otherwise last history frame)
         if frame_idx == -1:
-            frame_idx = max(0, self.history_frames - 1)
+            frame_idx = self.history_frames
 
         # Prepare lists for multi-frame data
         cameras_list = []
@@ -591,8 +590,7 @@ class Bench2DriveScene:
             Trajectory tensor [num_waypoints, 3] with (x, y, heading)
         """
         if frame_idx == -1:
-            # Use frame 0 when no history, otherwise use last history frame
-            frame_idx = max(0, self.history_frames - 1)
+            frame_idx = self.history_frames
 
         # Collect future positions
         trajectory = []
@@ -895,8 +893,7 @@ class Bench2DriveScene:
                 Better for complex scenarios requiring full situational awareness
         """
         if frame_idx == -1:
-            # Use frame 0 when no history, otherwise use last history frame
-            frame_idx = max(0, self.history_frames - 1)
+            frame_idx = self.history_frames
 
         # Load annotation based on mode
         # DEPRECATED: 10Hz sliding window mode removed
@@ -954,7 +951,7 @@ class Bench2DriveScene:
             agent_labels: [T, MAX_AGENTS] bool
         """
         if frame_idx == -1:
-            frame_idx = max(0, self.history_frames - 1)
+            frame_idx = self.history_frames
 
         current_anno = self._load_annotation(frame_idx)
         ego_box = None

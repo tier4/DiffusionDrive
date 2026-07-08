@@ -156,7 +156,7 @@ def load_model(checkpoint_path: str, config: Bench2DriveConfig, device: str = "c
     """
     model = V2TransfuserModelWrapper(config)
 
-    checkpoint = torch.load(checkpoint_path, map_location="cpu")
+    checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
     raw_state_dict = checkpoint.get("state_dict", checkpoint)
 
     # Strip Lightning prefix: agent._transfuser_model.xxx → xxx
