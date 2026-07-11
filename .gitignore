@@ -122,6 +122,7 @@ bin/
 # Claude-related files
 .claude/
 CLAUDE.md
+docs/superpowers/
 
 # Downloaded dataset files
 *.tgz
