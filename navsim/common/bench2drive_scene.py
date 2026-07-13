@@ -245,6 +245,14 @@ class Bench2DriveScene:
     #   def _load_annotation(self, idx: int, absolute: bool = False) -> Dict
     # This would eliminate code duplication and make the code more maintainable.
 
+    def get_raw_annotation(self, frame_idx: int) -> Dict:
+        """Public accessor for the raw annotation dict of a frame (no logic change).
+
+        Thin wrapper around `_load_annotation`, used by the offline closed-loop
+        parity harness to read raw CARLA fields (e.g. command_near, acceleration).
+        """
+        return self._load_annotation(frame_idx)
+
     def _load_annotation(self, frame_idx: int) -> Dict:
         """Load annotation for a specific frame (legacy mode)."""
         if frame_idx in self._annotations_cache:
