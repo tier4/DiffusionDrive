@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
 # Closed-loop Bench2Drive evaluation orchestrator.
-# Usage: run_closed_loop_eval.sh <routes.xml (abs path in Bench2Drive)> <checkpoint.ckpt> [results_dir]
+# Usage: run_closed_loop_eval.sh <routes.xml (IN-CONTAINER path, e.g. /workspace/Bench2Drive/...)> <checkpoint.ckpt> [results_dir]
+#   NOTE: <routes.xml> must be the path as seen INSIDE the container (i.e. under
+#   /workspace/Bench2Drive/...), because both the evaluator and the agent read it
+#   from inside the container, not from the host filesystem.
 # Env: DD_REPO (default ~/workspace/DiffusionDrive), B2D_REPO (default ~/workspace/Bench2Drive)
 #      RUN_DIR (default <results_dir>/run_<timestamp>) — override to resume/reuse a specific run dir
 set -euo pipefail
+trap 'docker rm -f ddrive-carla 2>/dev/null || true' EXIT
 
 ROUTES_XML=${1:?routes xml required}
 CKPT=${2:?checkpoint path required}
@@ -15,8 +19,21 @@ RUN_DIR=${RUN_DIR:-${RESULTS_ROOT}/run_${STAMP}}
 NET=ddrive-eval
 MIN_FREE_GB=100
 
+# --- results must live under /mnt/nvme1 (the only data mount) ---
+# /mnt/nvme1 is the sole host path mounted into the container, and the storage
+# guard below only checks that filesystem. A RUN_DIR anywhere else would silently
+# break persistence (results never land in the container) and check the wrong disk.
+if [[ "${RUN_DIR}" != /mnt/nvme1/* ]]; then
+  echo "FATAL: RUN_DIR must live under /mnt/nvme1 (the only data mount into the container)."
+  echo "       Got: ${RUN_DIR}"
+  exit 1
+fi
+
 # --- storage guard (never start a 16h run onto a filling disk) ---
 free_gb=$(df --output=avail -BG /mnt/nvme1 | tail -1 | tr -dc '0-9')
+if [ -z "${free_gb}" ]; then
+  echo "FATAL: cannot determine free space on /mnt/nvme1"; exit 1
+fi
 if [ "${free_gb}" -lt "${MIN_FREE_GB}" ]; then
   echo "FATAL: only ${free_gb}G free on /mnt/nvme1 (need ${MIN_FREE_GB}G)"; exit 1
 fi
@@ -34,6 +51,7 @@ start_carla() {
 }
 
 run_leaderboard() {
+  docker rm -f ddrive-agent 2>/dev/null || true
   # RESUME=True is safe on a fresh checkpoint file (leaderboard treats it as new).
   docker run --rm --name ddrive-agent --network ${NET} \
     --memory=20g --cpus=8 --shm-size=4g --gpus device=0 \
@@ -44,8 +62,8 @@ run_leaderboard() {
     -e SCENARIO_RUNNER_ROOT=/workspace/Bench2Drive/scenario_runner \
     -e LEADERBOARD_ROOT=/workspace/Bench2Drive/leaderboard \
     -e IS_BENCH2DRIVE=True \
-    -e SAVE_PATH=${RUN_DIR}/frames \
-    -e ROUTES=${ROUTES_XML} \
+    -e SAVE_PATH="${RUN_DIR}/frames" \
+    -e ROUTES="${ROUTES_XML}" \
     -w /workspace/Bench2Drive \
     diffusiondrive:blackwell-carla \
     python3 leaderboard/leaderboard/leaderboard_evaluator.py \
