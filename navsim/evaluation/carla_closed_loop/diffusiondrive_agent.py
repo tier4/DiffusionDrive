@@ -48,7 +48,12 @@ class DiffusionDriveCloseLoopAgent(autonomous_agent.AutonomousAgent):
             )
         self.ckpt_path = ckpt_candidates[0]
         extras = [p for p in parts if p != self.ckpt_path]
-        self.save_name = extras[0] if extras else datetime.datetime.now().strftime(
+        # The B2D leaderboard mutates args.agent_config cumulatively
+        # (leaderboard_evaluator.py:365 appends '+<save_name>' for EVERY route in
+        # the same process), so extras grows one entry per route. The current
+        # route's save_name is always the LAST element; taking extras[0] reuses
+        # route 1's directory and crashes setup with FileExistsError on route 2+.
+        self.save_name = extras[-1] if extras else datetime.datetime.now().strftime(
             "%m_%d_%H_%M_%S"
         )
 
@@ -61,8 +66,10 @@ class DiffusionDriveCloseLoopAgent(autonomous_agent.AutonomousAgent):
         if SAVE_PATH is not None:
             route_stem = pathlib.Path(os.environ["ROUTES"]).stem
             self.save_path = pathlib.Path(SAVE_PATH) / f"{route_stem}_{self.save_name}"
-            (self.save_path / "rgb_front").mkdir(parents=True, exist_ok=False)
-            (self.save_path / "meta").mkdir(parents=True, exist_ok=False)
+            # exist_ok=True: the crash-resume loop may re-run an interrupted
+            # route; a stale frames dir must never abort agent setup.
+            (self.save_path / "rgb_front").mkdir(parents=True, exist_ok=True)
+            (self.save_path / "meta").mkdir(parents=True, exist_ok=True)
 
     def _init(self):
         # lat/lon reference solved from first route waypoint -- verbatim method
