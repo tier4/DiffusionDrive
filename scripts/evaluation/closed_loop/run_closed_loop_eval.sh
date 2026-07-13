@@ -55,6 +55,7 @@ run_leaderboard() {
   # RESUME=True is safe on a fresh checkpoint file (leaderboard treats it as new).
   docker run --rm --name ddrive-agent --network ${NET} \
     --memory=20g --cpus=8 --shm-size=4g --gpus device=0 \
+    --entrypoint "" \
     -v "${DD_REPO}":/workspace/DiffusionDrive \
     -v "${B2D_REPO}":/workspace/Bench2Drive \
     -v /mnt/nvme1:/mnt/nvme1 \
