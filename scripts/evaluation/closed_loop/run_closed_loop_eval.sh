@@ -20,6 +20,12 @@ RESULTS_ROOT=${3:-/mnt/nvme1/diffusiondrive/closed_loop_results}
 DD_REPO=${DD_REPO:-$HOME/workspace/DiffusionDrive}
 B2D_REPO=${B2D_REPO:-$HOME/workspace/Bench2Drive}
 CARLA_IMAGE=${CARLA_IMAGE:-carlasim/carla:0.9.15}
+# Resource caps (overridable per run; defaults preserve original behavior).
+# Lower these when the host must stay responsive for other work during the run.
+CARLA_MEM=${CARLA_MEM:-16g}
+CARLA_CPUS=${CARLA_CPUS:-8}
+AGENT_MEM=${AGENT_MEM:-20g}
+AGENT_CPUS=${AGENT_CPUS:-8}
 STAMP=$(date +%Y%m%d_%H%M%S)
 RUN_DIR=${RUN_DIR:-${RESULTS_ROOT}/run_${STAMP}}
 NET=ddrive-eval
@@ -50,7 +56,7 @@ docker network create ${NET} 2>/dev/null || true
 start_carla() {
   docker rm -f ddrive-carla 2>/dev/null || true
   docker run -d --name ddrive-carla --network ${NET} \
-    --memory=16g --cpus=8 --gpus device=0 \
+    --memory="${CARLA_MEM}" --cpus="${CARLA_CPUS}" --gpus device=0 \
     "${CARLA_IMAGE}" \
     /bin/bash ./CarlaUE4.sh -RenderOffScreen -nosound -carla-rpc-port=2000
   sleep 30
@@ -60,7 +66,7 @@ run_leaderboard() {
   docker rm -f ddrive-agent 2>/dev/null || true
   # RESUME=True is safe on a fresh checkpoint file (leaderboard treats it as new).
   docker run --rm --name ddrive-agent --network ${NET} \
-    --memory=20g --cpus=8 --shm-size=4g --gpus device=0 \
+    --memory="${AGENT_MEM}" --cpus="${AGENT_CPUS}" --shm-size=4g --gpus device=0 \
     --entrypoint "" \
     -v "${DD_REPO}":/workspace/DiffusionDrive \
     -v "${B2D_REPO}":/workspace/Bench2Drive \
@@ -88,6 +94,18 @@ attempt=0
 max_attempts=40
 while [ ${attempt} -lt ${max_attempts} ]; do
   attempt=$((attempt + 1))
+  # External-stop sentinel: a watchdog (or operator) can halt the loop cleanly
+  # by creating ${RUN_DIR}/STOP; the run resumes later with the same RUN_DIR.
+  if [ -f "${RUN_DIR}/STOP" ]; then
+    echo "STOP sentinel found — halting cleanly (resume later with same RUN_DIR)." | tee -a "${RUN_DIR}/evaluation.log"
+    break
+  fi
+  # Re-check disk each attempt: a multi-day run must not fill a disk mid-flight.
+  attempt_free=$(df --output=avail -BG /mnt/nvme1 | tail -1 | tr -dc '0-9')
+  if [ -z "${attempt_free}" ] || [ "${attempt_free}" -lt 50 ]; then
+    echo "FATAL: /mnt/nvme1 free space low (${attempt_free:-unknown}G) — halting." | tee -a "${RUN_DIR}/evaluation.log"
+    break
+  fi
   echo "=== attempt ${attempt} $(date) ===" | tee -a "${RUN_DIR}/evaluation.log"
   start_carla
   if run_leaderboard; then
