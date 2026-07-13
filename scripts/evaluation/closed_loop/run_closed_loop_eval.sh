@@ -6,6 +6,11 @@
 #   from inside the container, not from the host filesystem.
 # Env: DD_REPO (default ~/workspace/DiffusionDrive), B2D_REPO (default ~/workspace/Bench2Drive)
 #      RUN_DIR (default <results_dir>/run_<timestamp>) — override to resume/reuse a specific run dir
+#      CARLA_IMAGE (default carlasim/carla:0.9.15) — CARLA server docker image.
+#          NOTE: the base carlasim/carla:0.9.15 image ships only Towns 1-10. The full
+#          Bench2Drive benchmark uses Towns 11/12/13/15, which live in AdditionalMaps.
+#          For full-benchmark runs set CARLA_IMAGE=carla:0.9.15-maps (the derived image
+#          built from AdditionalMaps_0.9.15.tar.gz).
 set -euo pipefail
 trap 'docker rm -f ddrive-carla 2>/dev/null || true' EXIT
 
@@ -14,6 +19,7 @@ CKPT=${2:?checkpoint path required}
 RESULTS_ROOT=${3:-/mnt/nvme1/diffusiondrive/closed_loop_results}
 DD_REPO=${DD_REPO:-$HOME/workspace/DiffusionDrive}
 B2D_REPO=${B2D_REPO:-$HOME/workspace/Bench2Drive}
+CARLA_IMAGE=${CARLA_IMAGE:-carlasim/carla:0.9.15}
 STAMP=$(date +%Y%m%d_%H%M%S)
 RUN_DIR=${RUN_DIR:-${RESULTS_ROOT}/run_${STAMP}}
 NET=ddrive-eval
@@ -45,7 +51,7 @@ start_carla() {
   docker rm -f ddrive-carla 2>/dev/null || true
   docker run -d --name ddrive-carla --network ${NET} \
     --memory=16g --cpus=8 --gpus device=0 \
-    carlasim/carla:0.9.15 \
+    "${CARLA_IMAGE}" \
     /bin/bash ./CarlaUE4.sh -RenderOffScreen -nosound -carla-rpc-port=2000
   sleep 30
 }
