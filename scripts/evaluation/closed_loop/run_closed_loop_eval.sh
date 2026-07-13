@@ -64,6 +64,7 @@ run_leaderboard() {
     -e IS_BENCH2DRIVE=True \
     -e SAVE_PATH="${RUN_DIR}/frames" \
     -e ROUTES="${ROUTES_XML}" \
+    -e DD_DEBUG_COMPASS="${DD_DEBUG_COMPASS:-}" \
     -w /workspace/Bench2Drive \
     diffusiondrive:blackwell-carla \
     python3 leaderboard/leaderboard/leaderboard_evaluator.py \

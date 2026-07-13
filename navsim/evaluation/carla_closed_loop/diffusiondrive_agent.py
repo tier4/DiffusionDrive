@@ -17,7 +17,10 @@ from leaderboard.autoagents import autonomous_agent
 from scipy.optimize import fsolve
 
 from navsim.common.bench2drive_dataloader import map_carla_command_to_discrete
-from navsim.evaluation.carla_closed_loop.input_adapter import build_agent_input
+from navsim.evaluation.carla_closed_loop.input_adapter import (
+    build_agent_input,
+    world_yaw_from_compass,
+)
 from navsim.evaluation.carla_closed_loop.model_runner import ModelRunner
 from navsim.evaluation.carla_closed_loop.route_planner import (
     EARTH_RADIUS_EQUA,
@@ -129,6 +132,32 @@ class DiffusionDriveCloseLoopAgent(autonomous_agent.AutonomousAgent):
         compass = float(imu[-1])
         if math.isnan(compass):  # known CARLA quirk on first frames
             compass = 0.0
+
+        # --- DEBUG ONLY (env-guarded): compass-formula + speed-sign validation. ---
+        # The privileged yaw read below is used STRICTLY for logging/validation and
+        # is NEVER fed into driving. Guarded by DD_DEBUG_COMPASS; every 20 steps.
+        if os.environ.get("DD_DEBUG_COMPASS") and self.step % 20 == 0:
+            print(f"[speed-check] step={self.step} speed={speed}", flush=True)
+            try:
+                from srunner.scenariomanager.carla_data_provider import (
+                    CarlaDataProvider,
+                )
+
+                true_yaw = math.radians(
+                    CarlaDataProvider.get_hero_actor().get_transform().rotation.yaw
+                )
+                est = world_yaw_from_compass(compass)
+                diff = math.degrees(
+                    math.atan2(math.sin(true_yaw - est), math.cos(true_yaw - est))
+                )
+                print(
+                    f"[compass-check] step={self.step} "
+                    f"true={math.degrees(true_yaw):.1f} "
+                    f"est={math.degrees(est):.1f} diff={diff:.2f}deg",
+                    flush=True,
+                )
+            except Exception as exc:  # never let debug logging break driving
+                print(f"[compass-check] step={self.step} unavailable: {exc}", flush=True)
 
         pos = self._route_planner.gps_to_location(np.array([gps[0], gps[1]]))
         target_xy, road_option = self._route_planner.run_step(pos)
