@@ -6,14 +6,14 @@
 
 ## Comparison with Published Baselines
 
-All numbers from the official Bench2DriveZoo evaluation (new version).
-Note: VAD/UniAD baselines had 213-218 completed routes (some CARLA crashes);
-DiffusionDrive completed all 220 (1 sim-crashed route = CARLA spawn timeout on Town13).
+Baseline numbers from the official Bench2DriveZoo evaluation JSONs (new version).
+Note: baselines had 213-218 completed routes (some CARLA crashes); DiffusionDrive
+ran all 220 (1 sim-crashed = CARLA spawn timeout on Town13, recorded as DS 0).
 
-| Method | Backbone | DS ↑ | RC (%) ↑ | SR (%) ↑ | Completed | Blocked | Timed Out |
-|--------|----------|------|----------|----------|-----------|---------|-----------|
+| Method | Backbone | DS | RC (%) | SR (%) | Completed | Blocked | Timed Out |
+|--------|----------|------|--------|--------|-----------|---------|-----------|
 | UniAD-Tiny | ResNet-50 | 40.73 | 63.5 | 13.2 | 93/215 | 44 | 78 |
-| **DiffusionDrive** | **ResNet-34** | **42.17** | **73.9** | **14.5** | **113/220** | **36** | **70** |
+| DiffusionDrive | ResNet-34 | 42.17 | 73.9 | 14.5 | 113/220 | 36 | 70 |
 | VAD | ResNet-50 | 42.35 | 65.5 | 15.0 | 99/213 | 49 | 65 |
 | UniAD-Base | ResNet-101 | 45.81 | 68.2 | 16.4 | 110/218 | 37 | 71 |
 
@@ -26,30 +26,9 @@ DiffusionDrive completed all 220 (1 sim-crashed route = CARLA spawn timeout on T
 | Emergency_Brake | 20.0% |
 | Merging | 12.5% |
 | Overtaking | 8.9% |
-| **Mean** | **20.7%** |
+| Mean | 20.7% |
 
-(Per-ability baselines not published in the Bench2DriveZoo README; numbers above are
-from our run of the official ability_benchmark.py tool.)
-
-## Key Observations
-
-1. **DiffusionDrive (ResNet-34) achieves competitive DS (42.17) with a lighter backbone**
-   than both VAD (ResNet-50, DS 42.35) and UniAD-Base (ResNet-101, DS 45.81).
-
-2. **Highest Route Completion (73.9%)** among all methods — the model gets further along
-   routes before failing, suggesting better lane-following behavior.
-
-3. **Lowest block rate (16.4%)** vs VAD (23.0%) and UniAD-Tiny (20.5%) — fewer situations
-   where the car stops and can't recover.
-
-4. **Success Rate (14.5%)** is comparable to the baselines (13.2-16.4%), meaning the
-   infraction rate when completing routes is similar.
-
-5. **Give_Way is the strongest ability (40%)**, consistent with the model learning to
-   yield to emergency vehicles and at invading turns from B2D's diverse training data.
-
-6. **Overtaking is the weakest (8.9%)** — the model struggles to plan lane changes around
-   parked/slow obstacles, likely due to the conservative from-scratch training.
+Per-ability baselines not published in the Bench2DriveZoo README.
 
 ## Run Configuration
 
