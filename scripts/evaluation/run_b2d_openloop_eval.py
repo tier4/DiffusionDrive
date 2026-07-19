@@ -34,6 +34,7 @@ from navsim.agents.diffusiondrive.transfuser_model_wrapper import V2TransfuserMo
 from navsim.agents.diffusiondrive.bench2drive_config import Bench2DriveConfig
 from navsim.agents.diffusiondrive.transfuser_features_b2d import Bench2DriveFeatureBuilder
 from navsim.evaluate.b2d_metrics import B2DOpenLoopMetrics
+from navsim.evaluation.checkpoint_loading import load_b2d_model
 
 
 class B2DEvalDataset(Dataset):
@@ -154,43 +155,20 @@ def load_model(checkpoint_path: str, config: Bench2DriveConfig, device: str = "c
         (model, load_info) where model is in eval mode on the target device
         and load_info is a dict with strict/missing_keys/unexpected_keys.
     """
-    model = V2TransfuserModelWrapper(config)
+    model, raw_load_info = load_b2d_model(
+        checkpoint_path, config, device, allow_partial_load
+    )
 
-    checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
-    raw_state_dict = checkpoint.get("state_dict", checkpoint)
-
-    # Strip Lightning prefix: agent._transfuser_model.xxx → xxx
-    cleaned = {}
-    prefix = "agent._transfuser_model."
-    for k, v in raw_state_dict.items():
-        if k.startswith(prefix):
-            cleaned[k[len(prefix):]] = v
-        elif k.startswith("agent."):
-            cleaned[k[len("agent."):]] = v
-        else:
-            cleaned[k] = v
-
-    missing, unexpected = model.load_state_dict(cleaned, strict=False)
+    missing = raw_load_info["missing"]
+    unexpected = raw_load_info["unexpected"]
     load_info = {
         "strict": not (missing or unexpected),
         "missing_keys": len(missing),
         "unexpected_keys": len(unexpected),
     }
-    if missing or unexpected:
-        msg = (
-            f"Checkpoint mismatch: {len(missing)} missing keys "
-            f"(e.g. {missing[:3]}), {len(unexpected)} unexpected keys "
-            f"(e.g. {unexpected[:3]}). A partially loaded model produces "
-            "garbage metrics."
-        )
-        if not allow_partial_load:
-            raise RuntimeError(msg + " Pass --allow-partial-load to override.")
-        print(f"WARNING: {msg} Continuing due to --allow-partial-load.")
-    else:
+    if not (missing or unexpected):
         print(f"Loaded checkpoint (all keys matched): {checkpoint_path}")
 
-    model = model.to(device)
-    model.eval()
     return model, load_info
 
 
